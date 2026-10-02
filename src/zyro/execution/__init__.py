@@ -1,1 +1,1 @@
-"""ZYRO execution boundary."""
+"""ZYRO execution and independent verification boundary."""

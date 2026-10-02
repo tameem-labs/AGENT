@@ -1,1 +1,1 @@
-"""ZYRO runtime boundary."""
+"""ZYRO runtime bootstrap and bounded agent execution boundary."""

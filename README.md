@@ -2,9 +2,9 @@
 
 ZYRO is specified as a personal Executive AI, computer agent, and AI organization. The user will interact with one canonical Executive while internal components coordinate domains, agents, models, tools, workflows, state, knowledge, security, execution, and verification.
 
-This repository is currently at **Phase 1 — Foundation** in the delivery sequence. It provides only the Python package, safe configuration, structured logging, test layers, and architecture boundaries needed for later work. It does **not** implement the Executive, agent behavior, model providers, tools, or AI responses.
+This repository has completed **Phase 2 — Executive Core + Task + Agent Runtime** in the delivery sequence. It implements one orchestration entry point, guarded Task lifecycles, separate Agent Definition and Agent Instance contracts, bounded agent handlers, structured runtime outcomes, finite retries, and independent basic verification. It does **not** implement model providers, tools, external APIs, memory, or domain business logic.
 
-> Naming note: the existing architecture roadmap calls the repository/runtime scaffold “Phase 0.” The current delivery milestone calls that work “Phase 1 — Foundation”; its next milestone, “Phase 2 — Executive Core + Task + Agent Runtime,” corresponds to roadmap Phase 1. See `PROGRESS.md` for actual implementation status.
+> Naming note: the existing architecture roadmap calls this Executive/Task/Agent work “Phase 1,” while the delivery sequence calls it “Phase 2.” The next delivery milestone, “Phase 3 — Model Router + Tool System,” corresponds to roadmap Phase 2. See `PROGRESS.md` for actual implementation status.
 
 ## Requirements
 
@@ -27,7 +27,15 @@ Run the foundation package:
 python -m zyro
 ```
 
-The command initializes safe configuration and logging, then exits. It does not contact an AI provider.
+The command initializes safe configuration and logging, then exits. It does not contact an AI provider. Application code composes `ZyroExecutive` from an `AgentRegistry`, `AgentRuntime`, bounded `AgentHandler` implementations, and an optional independent `Verifier`. Without a verifier, successful execution is explicitly reported as `SUCCEEDED_UNVERIFIED`; it is never promoted to `DONE` or `VERIFIED`.
+
+Phase 2 contracts are located at:
+
+- `src/zyro/core/task.py` — Task lifecycle and verification records
+- `src/zyro/core/executive.py` — canonical request/orchestration boundary
+- `src/zyro/agents/` — definitions, instances, handlers, and registry
+- `src/zyro/runtime/agent_runtime.py` — one bounded execution attempt
+- `src/zyro/execution/verification.py` — independent verification protocol
 
 ## Quality checks
 

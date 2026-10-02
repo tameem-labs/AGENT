@@ -1,9 +1,13 @@
-"""ZYRO foundation package.
+"""ZYRO core package with a provider-independent Executive and agent runtime."""
 
-Business capabilities are intentionally deferred to later implementation phases.
-"""
-
+from zyro.core.executive import ExecutiveResult, UserRequest, ZyroExecutive
 from zyro.runtime.bootstrap import RuntimeContext, initialize_runtime
 
-__all__ = ["RuntimeContext", "initialize_runtime"]
-__version__ = "0.1.0"
+__all__ = [
+    "ExecutiveResult",
+    "RuntimeContext",
+    "UserRequest",
+    "ZyroExecutive",
+    "initialize_runtime",
+]
+__version__ = "0.2.0"

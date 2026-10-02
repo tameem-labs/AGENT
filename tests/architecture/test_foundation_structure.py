@@ -13,6 +13,16 @@ EXPECTED_BOUNDARIES = {
     "security",
     "interfaces",
 }
+REQUIRED_PHASE_TWO_MODULES = {
+    "src/zyro/core/executive.py",
+    "src/zyro/core/task.py",
+    "src/zyro/agents/definition.py",
+    "src/zyro/agents/instance.py",
+    "src/zyro/agents/handler.py",
+    "src/zyro/agents/registry.py",
+    "src/zyro/runtime/agent_runtime.py",
+    "src/zyro/execution/verification.py",
+}
 REQUIRED_ARCHITECTURE_DOCS = {
     "docs/00_MASTER/ZYRO_MASTER_SPEC.md",
     "docs/00_MASTER/ARCHITECTURE_INVARIANTS.md",
@@ -30,6 +40,12 @@ def test_expected_package_boundaries_are_importable_packages() -> None:
     ]
 
     assert not missing, f"missing ZYRO package boundaries: {sorted(missing)}"
+
+
+def test_phase_two_contract_modules_remain_separate() -> None:
+    missing = [path for path in REQUIRED_PHASE_TWO_MODULES if not (ROOT / path).is_file()]
+
+    assert not missing, f"missing Phase 2 contract modules: {sorted(missing)}"
 
 
 def test_architecture_source_documents_remain_present() -> None:
