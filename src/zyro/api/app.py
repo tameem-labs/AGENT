@@ -145,7 +145,7 @@ def create_app(
 
     app = FastAPI(
         title="ZYRO Local API",
-        version="0.12.0",
+        version="0.13.0",
         docs_url="/api/docs",
         redoc_url=None,
         lifespan=lifespan,
@@ -417,6 +417,40 @@ def create_app(
         except (ApprovalError, ValueError) as error:
             raise HTTPException(409, str(error)) from error
         return {"approval_id": item.approval_id, "state": item.state.value}
+
+    @app.get("/api/organization")
+    def organization(
+        _: AuthenticatedPrincipal = Depends(principal),
+    ) -> dict[str, Any]:
+        agents = runtime.application.agents()
+        return {
+            "executive": next(item for item in agents if item["agent_id"] == "zyro.executive"),
+            "departments": [
+                {
+                    "department_id": "freelancing",
+                    "name": "Freelance",
+                    "status": "ACTIVE",
+                    "agent_ids": ["freelancing.domain"],
+                    "capabilities": ["qualification", "scoring", "outreach", "delivery", "QA"],
+                },
+                *(
+                    {
+                        "department_id": name.lower(),
+                        "name": name,
+                        "status": "PLANNED",
+                        "agent_ids": [],
+                        "capabilities": [],
+                    }
+                    for name in (
+                        "Research",
+                        "Content",
+                        "Finance",
+                        "Development",
+                        "System / Operations",
+                    )
+                ),
+            ],
+        }
 
     @app.get("/api/agents")
     def agents(

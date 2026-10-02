@@ -9,7 +9,7 @@ ZYRO is designed as one canonical personal Executive backed by replaceable model
 | Path | Responsibility |
 | --- | --- |
 | `src/zyro/` | Installable Python package and implementation source |
-| `src/zyro/api/` | Authenticated FastAPI boundary plus built responsive local frontend assets |
+| `src/zyro/api/` | Authenticated FastAPI boundary plus responsive local frontend, first-run setup, browser-native voice, and canonical Organization projection |
 | `src/zyro/application/` | Canonical product composition, chat/Task projections, and UI-independent service |
 | `src/zyro/workflows/` | Minimal durable DAG Workflow state, controls, execution, history, and local triggers |
 | `src/zyro/integrations/` | Provider-neutral OAuth, connections, accounts, scopes, health, and encrypted credentials |

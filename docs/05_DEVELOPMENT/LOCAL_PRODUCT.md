@@ -38,7 +38,7 @@ Dispatch grants narrow the Permission/Approval race: issuance and claim are boun
 
 No browser/computer control adapter is bundled. The UI truthfully reports UNAVAILABLE. Any future adapter must use narrow typed actions, explicit targets, canonical authorization, high-risk Approval, Resource bounds, timeouts, verification, traces, and uncertain-effect Recovery. It must not expose unrestricted shell/eval primitives, traverse outside explicit roots, infer approval from screen content, or treat camera/microphone input as authority.
 
-Voice is a provider-neutral NOT CONFIGURED UI boundary. No recording, upload, transcription, or synthesis occurs in the current product.
+Voice uses the browser's Web Speech APIs when available: the visible microphone starts/stops recognition, final transcripts enter the same authenticated chat form, and `SpeechSynthesis` reads the resulting canonical ZYRO response. Listening, Processing, Speaking, Stopped, Error, and Unavailable states are explicit; speech can be interrupted. Browser/OS implementations may use platform speech services. A transcript is user input—not identity, Permission, or Approval.
 
 ## Validation
 

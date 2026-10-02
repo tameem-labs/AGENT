@@ -318,7 +318,7 @@ class ZyroApplication:
                     "capabilities": ["conversation", "planning"],
                 },
             ],
-            "voice": {"status": "NOT_CONFIGURED"},
+            "voice": {"status": "BROWSER_DEPENDENT", "provider": "Web Speech API"},
             "browser": {"status": "UNAVAILABLE"},
             "running_work": sum(item.status is WorkflowStatus.RUNNING for item in workflows),
             "task_count": len(tasks),
@@ -327,6 +327,18 @@ class ZyroApplication:
         }
 
     def agents(self) -> tuple[dict[str, Any], ...]:
+        tasks = self.store.tasks()
+        executive_work = [
+            item for item in tasks if item.get("agent_id") == self.executive_agent.agent_id
+        ]
+        current = next(
+            (
+                item
+                for item in executive_work
+                if item.get("status") not in {"DONE", "FAILED", "CANCELLED"}
+            ),
+            None,
+        )
         return (
             {
                 "agent_id": self.executive_agent.agent_id,
@@ -342,7 +354,13 @@ class ZyroApplication:
                         else self.executive_agent.model_requirements.task_type
                     )
                 },
-                "status": "AVAILABLE",
+                "status": "ACTIVE" if current is not None else "AVAILABLE",
+                "current_task": None if current is None else current["task_id"],
+                "verification_requirements": ("independent structural verification",),
+                "recent_work": tuple(
+                    {"task_id": item["task_id"], "goal": item["goal"], "status": item["status"]}
+                    for item in executive_work[:5]
+                ),
             },
             {
                 "agent_id": "freelancing.domain",
@@ -351,8 +369,15 @@ class ZyroApplication:
                 "domain": "freelancing",
                 "capabilities": ("qualify", "prepare outreach", "delivery", "qa"),
                 "permissions": ("send_outreach requires explicit approval",),
-                "model_requirements": {},
+                "model_requirements": {"task_type": "freelancing.controlled-operation"},
                 "status": "AVAILABLE",
+                "current_task": None,
+                "verification_requirements": (
+                    "signed outreach evidence",
+                    "signed deliverable evidence",
+                    "signed QA evidence",
+                ),
+                "recent_work": (),
             },
         )
 

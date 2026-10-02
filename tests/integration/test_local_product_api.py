@@ -35,7 +35,10 @@ def test_authenticated_ui_api_runs_real_executive_workflow_and_resource_path(
     app = create_app(tmp_path / "product")
     with TestClient(app) as client:
         assert client.get("/").status_code == 200
-        assert "ZYRO" in client.get("/").text
+        page = client.get("/").text
+        assert "ZYRO" in page
+        assert 'id="microphone"' in page
+        assert "FIRST-RUN SETUP" in page
         csrf = authenticate(client)
 
         denied = client.post("/api/chat", json={"message": "Plan my day"})
@@ -55,6 +58,10 @@ def test_authenticated_ui_api_runs_real_executive_workflow_and_resource_path(
 
         tasks = client.get("/api/tasks").json()
         workflows = client.get("/api/workflows").json()
+        organization = client.get("/api/organization").json()
+        assert organization["executive"]["agent_id"] == "zyro.executive"
+        assert organization["departments"][0]["status"] == "ACTIVE"
+        assert all(item["status"] == "PLANNED" for item in organization["departments"][1:])
         assert len(tasks) == len(workflows) == 1
         assert tasks[0]["workflow_id"] == workflows[0]["workflow_id"]
 

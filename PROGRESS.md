@@ -10,11 +10,38 @@ This file is a chronological, append-only implementation record. Add new entries
 
 ## Current status
 
-- **Current delivery phase:** Final Round 2 — first-run provider setup and release hardening — **IMPLEMENTED AND TESTED**
-- **Architecture-roadmap equivalent:** Complete local product with optional real Gemini execution over the canonical Model Router
-- **Next permitted work:** Provider-specific OAuth/tool adapters may be added only with external developer credentials, official API access, and review.
-- **Known blockers:** Version 1.0 readiness remains blocked by durable production Permission/Approval service, configured external account providers, deployment/TLS/HA operations, and multi-process qualification.
-- **Explicitly not implemented:** live Google Account/Gmail/Drive/Calendar, GitHub, Instagram, email/CRM, autonomous lead discovery, production browser/computer control, configured voice, payments, distributed/cloud deployment, and monitoring SaaS remain **NOT CONFIGURED**, **ADAPTER ONLY**, **UNAVAILABLE**, or **NOT IMPLEMENTED**. Gemini is implemented but only **CONFIGURED** after owner-supplied key validation.
+- **Current delivery phase:** Final Round 2 completion audit — **BLOCKED ON UNIMPLEMENTED EXTERNAL SERVICE ADAPTERS**
+- **Architecture-roadmap equivalent:** Usable local product with real configurable Gemini and browser-native voice over the canonical Executive path
+- **Next permitted work:** Implement and credential official Google/Gmail/Drive/Calendar, GitHub, browser/computer, and approved Instagram adapters without weakening authority boundaries.
+- **Known blockers:** The requested real external-service flows cannot be certified because official OAuth client credentials/provider approvals are absent and the repository does not yet implement those provider-specific tools. Browser/computer control also has no sandbox runtime.
+- **Explicitly not implemented:** live Google Account/Gmail/Drive/Calendar, GitHub, Instagram, email/CRM, autonomous lead discovery, production browser/computer control, payments, distributed/cloud deployment, and monitoring SaaS remain **NOT CONFIGURED**, **UNAVAILABLE**, or **NOT IMPLEMENTED**. Gemini is real but only CONFIGURED after owner key validation; voice is real only where browser Web Speech APIs are available.
+
+---
+
+## 2026-10-02 — Final Round 2 actual-completion follow-up
+
+### Status
+
+**BLOCKED, WITH ALL COHERENT LOCAL IMPROVEMENTS IMPLEMENTED** — package advanced to **0.13.0** without making unsupported external-integration claims.
+
+### Implementation
+
+- Added real browser-native voice turns: visible microphone, start/stop recognition, interim transcript, Processing/Speaking/Stopped/Error/Unavailable states, same canonical chat submission, response synthesis, and speech interruption. Speech input remains data and never grants authentication, Permission, or Approval.
+- Replaced the flat Agents presentation with a canonical Organization API and UI. It derives Executive current/recent work from real Task projections, shows the registered Freelancing domain with capabilities and verification requirements, and labels unregistered departments PLANNED rather than fabricating agents.
+- Added Agent detail fields for current Task, model requirements, permissions, verification requirements, and recent work.
+- Retained the real encrypted-key Gemini adapter and first-run setup from 0.12.0; no external-service result was fabricated.
+
+### Blocking audit result
+
+- Google Account OAuth, Gmail, Drive, Calendar, GitHub, and Instagram provider-specific adapters/tools are not implemented. Provider-neutral contracts are not counted as completion.
+- Browser/computer control is not implemented because no sandboxed browser/OS runtime is composed through Tool Authorization.
+- External service tests cannot be run without both code adapters and external client credentials/test accounts. Mock-only success is not treated as real integration completion.
+
+### Validation
+
+- **321 tests passed**; Ruff lint/format, strict mypy across 165 source files, compileall, and JavaScript syntax passed.
+- Live localhost smoke passed for first-run owner setup, explicit provider choice, canonical chat Task, Organization projection from durable Task state, voice control surface/status, database integrity, and backup.
+- Web Speech audio capture/playback cannot be automated in this headless sandbox and remains browser/OS dependent; static JavaScript syntax and UI/API integration were validated without claiming microphone hardware execution.
 
 ---
 

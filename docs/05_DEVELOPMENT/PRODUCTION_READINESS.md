@@ -1,12 +1,12 @@
 # Production-readiness assessment
 
-Assessment date: 2026-10-02. Package version: 0.12.0.
+Assessment date: 2026-10-02. Package version: 0.13.0.
 
 This matrix reports demonstrated behavior. A passing local test does not imply that an unconfigured external provider exists.
 
 | Area | Status | Demonstrated boundary | Remaining limitation |
 | --- | --- | --- | --- |
-| Local product UI/API | IMPLEMENTED | Authenticated responsive UI uses canonical Application API and real Task/Workflow state | Local FastAPI process; no production TLS/HA deployment |
+| Local product UI/API | IMPLEMENTED | Authenticated responsive UI uses canonical Application API, real Task/Workflow state, first-run Gemini setup, browser-native voice, and Organization projection | Local FastAPI process; no production TLS/HA deployment |
 | Core Task and Agent Runtime | IMPLEMENTED | Finite Task attempts, Agent instances, model/tool boundaries, independent verification | Canonical Task itself remains in-process; product projections and Workflows are durable |
 | Workflow | IMPLEMENTED | Durable DAG, dependencies, attempts, controls, history, immediate/schedule/recurrence/event contracts, restart recovery | Scheduler is cooperative local polling, not a worker service |
 | Local authentication | IMPLEMENTED | Scrypt owner password, hashed sessions, expiry/revocation, HttpOnly cookie, CSRF and origin checks | Single local owner; no passkeys, federation, or remote identity provider |
@@ -29,10 +29,10 @@ This matrix reports demonstrated behavior. A passing local test does not imply t
 | External outreach | ADAPTER ONLY | Exact payload, Approval, dispatch grant, durable identity, uncertainty and verifier evidence | No credentialed email/CRM adapter |
 | Freelancing delivery/QA/Handoff | IMPLEMENTED | Durable delivery operation, signed deliverable/QA evidence, atomic verified Handoff completion | No artifact repository or domain-specific external verifier |
 | Browser/computer | UNAVAILABLE | Safe future boundary/status only | No control adapter is implemented |
-| Voice | NOT CONFIGURED | Provider-neutral UI status; voice grants no authority | No STT/TTS/live-audio provider |
+| Voice | BROWSER DEPENDENT | Real Web Speech recognition and synthesis feed the same authenticated chat; interruption and explicit states; voice grants no authority | Availability/privacy behavior depends on browser, OS, and its speech service; no bundled offline STT/TTS model |
 | Database operations | PARTIAL | WAL stores, stable IDs, integrity command, online backup, forward migration primitive | Historical stores are not all registered in one migration catalog; no encryption-at-rest for ordinary state |
 | Production deployment | NOT IMPLEMENTED | None claimed | No TLS termination, service supervisor, HA, distributed locks, cloud or Kubernetes |
 
 ## 1.0 readiness decision
 
-**NOT MET.** Version 0.12.0 is a usable local product. Production readiness still requires durable authenticated Permission/Approval composition, provider-specific OAuth and execution adapters, external verification, complete per-store migration registration, key rotation/backup operations, multi-process qualification, and deployment/security operations.
+**NOT MET.** Version 0.13.0 is a usable local product. Production readiness still requires durable authenticated Permission/Approval composition, provider-specific OAuth and execution adapters, external verification, complete per-store migration registration, key rotation/backup operations, multi-process qualification, and deployment/security operations.

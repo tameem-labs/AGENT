@@ -1,8 +1,8 @@
 # ZYRO
 
-ZYRO 0.12.0 is a runnable local-first Personal Executive AI product. It exposes an authenticated localhost interface backed by the same canonical Executive, Task, Agent, Model Router, Workflow, Resource, Verification, Recovery, and domain contracts used by the library.
+ZYRO 0.13.0 is a runnable local-first Personal Executive AI product. It exposes an authenticated localhost interface backed by the same canonical Executive, Task, Agent, Model Router, Workflow, Resource, Verification, Recovery, and domain contracts used by the library.
 
-Google Gemini is the default configurable AI provider and is invoked through the canonical Model Router when its key validates. The deterministic local provider remains an explicitly **SIMULATED** fallback. Google account OAuth, GitHub, Instagram, real email/CRM, browser control, and voice still require reviewed provider configuration and are shown as **NOT CONFIGURED** or **UNAVAILABLE**—never as working integrations.
+Google Gemini is the default configurable AI provider and is invoked through the canonical Model Router when its key validates. The deterministic local provider remains an explicitly **SIMULATED** fallback. Google account OAuth, GitHub, Instagram, real email/CRM, and browser/computer control still require reviewed provider configuration and are shown as **NOT CONFIGURED** or **UNAVAILABLE**. Voice uses the browser's real Web Speech recognition and synthesis APIs when supported, and reports unavailable otherwise.
 
 ## Start locally
 
@@ -67,14 +67,14 @@ For an Arena/live-preview host, bind explicitly with `zyro serve --host 0.0.0.0`
 - **First-run provider setup:** configure, validate, replace, or remove Gemini from the UI without exposing its key; invalid credentials are not persisted.
 - **Active work and Task detail:** real Task projections show status, agent, model, workflow, attempts, resource limits, verification, errors, and result.
 - **Workflows:** durable DAG steps, dependencies, attempts, waiting, approval-required state, retry, pause, resume, cancellation, completion, event/schedule contracts, and restart recovery.
-- **Agents:** real Executive and domain capability metadata without secrets.
+- **Organization:** real registered Executive and Freelancing agents show current work, capabilities, permissions, model and verification requirements; unimplemented departments are explicitly PLANNED.
 - **Approval Center:** reserved for canonical backend Approval state; no frontend-only approval authority exists.
 - **Memory and Activity:** honest canonical state views and correlated Workflow history. Credentials never enter Memory.
 - **Integration Center:** provider-neutral definitions, multiple account records, server-side OAuth state and PKCE, callback exchange, encrypted local token vault, disconnect/revoke, scopes, health, and connected account display.
 - **System Status and Settings:** actual local runtime, provider, Workflow, Task, integration, voice, and browser availability.
 - **Responsive dark frontend:** static product assets are served by the authenticated FastAPI application; the browser never accesses SQLite directly.
 
-## Safety changes in 0.12.0
+## Safety changes in 0.13.0
 
 - Trusted domain verification now requires verifier-issued, HMAC-authenticated evidence binding subject/action, Task, Workflow, source, reference, digest, verifier, method, result, timestamp, and trust class. Arbitrary strings and `passed=True` no longer create trusted outreach, deliverable, QA, or Handoff completion.
 - Local authentication is separate from Permission and Approval. OAuth permission is also separate from ZYRO action authority.
@@ -116,4 +116,4 @@ See `PROJECT_MAP.md`, `PROGRESS.md`, and `docs/05_DEVELOPMENT/PRODUCTION_READINE
 
 ## Current limitations
 
-ZYRO is a usable local product, not a production cloud deployment. Gemini is live only after the owner supplies and validates a key; availability, quota, regional access, and billing remain controlled by Google. No configured Google account OAuth, Gmail, Drive, Calendar, GitHub, Instagram, email/CRM, webhook, browser/computer, voice, payment, distributed worker, TLS termination, HA, or monitoring SaaS is bundled. The local fallback is deterministic and does not claim general reasoning or external research. Permission and Approval records outside the authenticated application composition remain process-local. Multi-process SQLite operation is not qualified. Version 1.0 production readiness is not claimed.
+ZYRO is a usable local product, not a production cloud deployment. Gemini is live only after the owner supplies and validates a key; availability, quota, regional access, and billing remain controlled by Google. No configured Google account OAuth, Gmail, Drive, Calendar, GitHub, Instagram, email/CRM, webhook, browser/computer, payment, distributed worker, TLS termination, HA, or monitoring SaaS is bundled. Voice depends on browser Web Speech support and the browser/OS speech service; it does not establish identity or authority. The local fallback is deterministic and does not claim general reasoning or external research. Permission and Approval records outside the authenticated application composition remain process-local. Multi-process SQLite operation is not qualified. Version 1.0 production readiness is not claimed.
