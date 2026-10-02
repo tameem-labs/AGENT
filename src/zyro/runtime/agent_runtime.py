@@ -95,6 +95,7 @@ class AgentRuntime:
             requester_id=task.owner,
             pending_approval_id=task.pending_approval_id,
             context_provider=self._context_provider,
+            workflow_id=task.workflow_id,
         )
         logger = get_logger(
             "agent_runtime",

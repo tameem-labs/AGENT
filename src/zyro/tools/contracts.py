@@ -232,6 +232,8 @@ class ToolAuthorizationDecision:
     error: ErrorInfo | None = None
     permission_id: str | None = None
     approval_id: str | None = None
+    dispatch_grant_id: str | None = None
+    action_fingerprint: str | None = None
 
     def __post_init__(self) -> None:
         if self.status is ToolAuthorizationStatus.ALLOW and self.error is not None:

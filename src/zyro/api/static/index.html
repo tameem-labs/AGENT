@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090b0d">
+  <title>ZYRO — Personal Executive</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <div class="noise"></div>
+  <div id="auth" class="auth-shell hidden">
+    <div class="auth-card">
+      <div class="brand-mark large">Z</div>
+      <p class="eyebrow">LOCAL-FIRST EXECUTIVE</p>
+      <h1 id="auth-title">Welcome to ZYRO</h1>
+      <p id="auth-copy" class="muted">Create your local owner password. It never leaves this machine.</p>
+      <form id="auth-form">
+        <label>Password<input id="password" type="password" minlength="12" autocomplete="current-password" required placeholder="12+ characters"></label>
+        <button class="primary full" type="submit"><span id="auth-action">Initialize securely</span><i>↗</i></button>
+      </form>
+      <p id="auth-error" class="error"></p>
+      <div class="trust-row"><span>● Encrypted local data</span><span>● HttpOnly session</span></div>
+    </div>
+  </div>
+
+  <div id="shell" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">Z</div><div><strong>ZYRO</strong><small>PERSONAL EXECUTIVE</small></div></div>
+      <button id="new-chat" class="new-chat"><span>＋</span> New conversation <kbd>⌘ K</kbd></button>
+      <nav>
+        <p>WORKSPACE</p>
+        <button data-view="chat" class="active"><span>◌</span> Executive</button>
+        <button data-view="work"><span>◫</span> Active work <b id="work-count">0</b></button>
+        <button data-view="workflows"><span>⌘</span> Workflows</button>
+        <button data-view="approvals"><span>◇</span> Approvals <b id="approval-count">0</b></button>
+        <p>ORGANIZATION</p>
+        <button data-view="agents"><span>◎</span> Agents</button>
+        <button data-view="memory"><span>▱</span> Memory</button>
+        <button data-view="activity"><span>↗</span> Activity</button>
+        <p>SYSTEM</p>
+        <button data-view="integrations"><span>⛓</span> Integrations</button>
+        <button data-view="status"><span>◈</span> System status</button>
+        <button data-view="settings"><span>⚙</span> Settings</button>
+      </nav>
+      <div class="runtime-chip"><i></i><div><strong>Local runtime</strong><small id="runtime-health">Checking…</small></div><span>›</span></div>
+      <button id="logout" class="owner"><div class="avatar">YO</div><div><strong>Local owner</strong><small>Authenticated session</small></div><span>↗</span></button>
+    </aside>
+
+    <main>
+      <header><div><p class="eyebrow" id="section-eyebrow">EXECUTIVE</p><h2 id="section-title">Good evening.</h2></div><div class="header-actions"><span class="privacy"><i></i> Local & private</span><button id="refresh" title="Refresh">↻</button></div></header>
+
+      <section id="view-chat" class="view active chat-view">
+        <div id="messages" class="messages">
+          <article class="message assistant intro"><div class="message-avatar">Z</div><div><p class="meta">ZYRO <span>LOCAL EXECUTIVE</span></p><h3>What should we move forward?</h3><p>I can plan work, run verified local tasks, and show exactly what is waiting, blocked, or unavailable. External actions always stay behind permission and approval.</p><div class="suggestions"><button>Find qualified leads and prepare outreach</button><button>Show me the current system status</button><button>Plan my highest-priority work</button></div></div></article>
+        </div>
+        <div class="composer-wrap"><form id="composer"><textarea id="prompt" rows="1" maxlength="16384" placeholder="Ask ZYRO to plan or execute…"></textarea><div class="composer-bar"><span><kbd>↵</kbd> send · <kbd>⇧↵</kbd> new line</span><button type="submit" aria-label="Send">↑</button></div></form><p>ZYRO reports configured, simulated, and unavailable capabilities honestly.</p></div>
+      </section>
+
+      <section id="view-work" class="view"><div class="section-head"><div><h3>Active work</h3><p>Canonical Task state — no inferred progress.</p></div><div class="filters"><button class="active">All</button><button>Running</button><button>Waiting</button><button>Failed</button></div></div><div id="tasks" class="data-grid"></div></section>
+      <section id="view-workflows" class="view"><div class="section-head"><div><h3>Workflows</h3><p>Steps, dependencies, attempts, and durable history.</p></div></div><div id="workflows" class="stack"></div></section>
+      <section id="view-approvals" class="view"><div class="section-head"><div><h3>Approval center</h3><p>Review exact consequential actions before execution.</p></div></div><div id="approvals" class="stack"><div class="empty"><span>◇</span><h4>No pending approvals</h4><p>Requests requiring your authority will appear here with exact payload, risk, requester, and expiry.</p></div></div></section>
+      <section id="view-agents" class="view"><div class="section-head"><div><h3>Agent organization</h3><p>Identity, capability, model requirements, and current availability.</p></div></div><div id="agents" class="card-grid"></div></section>
+      <section id="view-memory" class="view"><div class="section-head"><div><h3>Memory</h3><p>Owner-controlled records. Credentials never belong here.</p></div></div><div id="memory" class="stack"></div></section>
+      <section id="view-activity" class="view"><div class="section-head"><div><h3>Activity</h3><p>Correlated workflow and execution history.</p></div></div><div id="activity" class="timeline"></div></section>
+      <section id="view-integrations" class="view"><div class="section-head"><div><h3>Integration center</h3><p>Connect provider accounts without exposing credentials to agents or the browser.</p></div><span class="secure-badge">▣ SERVER-SIDE OAUTH</span></div><div id="integrations" class="integration-grid"></div></section>
+      <section id="view-status" class="view"><div class="section-head"><div><h3>System status</h3><p>Providers, runtime, queues, and capability health.</p></div></div><div id="system-status" class="status-layout"></div></section>
+      <section id="view-settings" class="view"><div class="section-head"><div><h3>Settings</h3><p>Local runtime and account preferences.</p></div></div><div class="settings-card"><div><h4>Session</h4><p>Authenticated local owner. Sessions expire after 12 hours.</p></div><span class="tag green">ACTIVE</span></div><div class="settings-card"><div><h4>Appearance</h4><p>ZYRO dark interface follows its local product theme.</p></div><span class="tag">DARK</span></div><div class="settings-card"><div><h4>Voice</h4><p>Provider-neutral voice is available when a provider is configured. Voice never grants authority.</p></div><span class="tag amber">NOT CONFIGURED</span></div></section>
+    </main>
+  </div>
+
+  <dialog id="detail"><button class="dialog-close">×</button><div id="detail-content"></div></dialog>
+  <div id="toast" class="toast"></div>
+  <script src="/assets/app.js" type="module"></script>
+</body>
+</html>

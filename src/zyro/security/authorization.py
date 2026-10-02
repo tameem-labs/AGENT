@@ -13,6 +13,7 @@ from zyro.security.approval import (
     ApprovalValidityOutcome,
     digest_arguments,
 )
+from zyro.security.dispatch import DispatchGrantAuthority
 from zyro.security.permission import (
     PermissionDecision,
     PermissionDecisionOutcome,
@@ -45,6 +46,7 @@ class ToolAuthorizationService:
         approval_ttl: timedelta = timedelta(minutes=15),
         clock: Callable[[], datetime] = _utc_now,
         id_factory: Callable[[], str] | None = None,
+        dispatch_grants: DispatchGrantAuthority | None = None,
     ) -> None:
         if approval_ttl <= timedelta(0):
             raise ValueError("approval_ttl must be positive")
@@ -54,11 +56,18 @@ class ToolAuthorizationService:
         self._approval_ttl = approval_ttl
         self._clock = clock
         self._id_factory = id_factory or (lambda: str(uuid4()))
+        self._dispatch_grants = dispatch_grants or DispatchGrantAuthority(clock=clock)
+
+    @property
+    def dispatch_grants(self) -> DispatchGrantAuthority:
+        return self._dispatch_grants
 
     def authorize(
         self,
         call: ToolCall,
         definition: ToolDefinition,
+        *,
+        issue_dispatch_grant: bool = True,
     ) -> ToolAuthorizationDecision:
         capability = self._resolve_capability(call, definition)
         scope = PermissionScope(
@@ -90,11 +99,12 @@ class ToolAuthorizationService:
         if risk.outcome is ApprovalRequirementOutcome.NOT_PERMITTED:
             return self._permission_denied(permission)
         if risk.outcome is ApprovalRequirementOutcome.NOT_REQUIRED:
-            return ToolAuthorizationDecision(
-                status=ToolAuthorizationStatus.ALLOW,
-                permission_decision_id=permission.decision_id,
-                permission_id=permission.permission_id,
-                policy_version=risk.policy_version,
+            return self._allowed(
+                call,
+                definition,
+                permission,
+                risk.policy_version,
+                issue_dispatch_grant=issue_dispatch_grant,
             )
 
         action_error = self._approval_action_error(call)
@@ -164,12 +174,13 @@ class ToolAuthorizationService:
             and validity.approval.requester_id == call.requester_id
         )
         if validity.valid and approval_context_matches:
-            return ToolAuthorizationDecision(
-                status=ToolAuthorizationStatus.ALLOW,
-                permission_decision_id=permission.decision_id,
-                permission_id=permission.permission_id,
+            return self._allowed(
+                call,
+                definition,
+                permission,
+                risk.policy_version,
                 approval_id=call.approval_id,
-                policy_version=risk.policy_version,
+                issue_dispatch_grant=issue_dispatch_grant,
             )
         if validity.valid:
             return ToolAuthorizationDecision(
@@ -237,6 +248,47 @@ class ToolAuthorizationService:
                 message=validity.reason,
                 error_type="ApprovalBlocked",
             ),
+        )
+
+    def _allowed(
+        self,
+        call: ToolCall,
+        definition: ToolDefinition,
+        permission: PermissionDecision,
+        policy_version: str,
+        *,
+        approval_id: str | None = None,
+        issue_dispatch_grant: bool,
+    ) -> ToolAuthorizationDecision:
+        fingerprint = digest_arguments(
+            {
+                "tool_id": call.tool_id,
+                "arguments": call.arguments,
+                "request_id": call.request_id,
+                "task_id": call.task_id,
+                "workflow_id": call.workflow_id,
+                "agent_id": call.agent_id,
+                "instance_id": call.instance_id,
+                "requester_id": call.requester_id,
+                "target": call.target,
+                "capability": call.capability,
+            }
+        )
+        grant_id: str | None = None
+        if issue_dispatch_grant:
+            grant = self._dispatch_grants.issue(
+                fingerprint,
+                lambda: self.authorize(call, definition, issue_dispatch_grant=False).allowed,
+            )
+            grant_id = grant.grant_id
+        return ToolAuthorizationDecision(
+            status=ToolAuthorizationStatus.ALLOW,
+            permission_decision_id=permission.decision_id,
+            permission_id=permission.permission_id,
+            approval_id=approval_id,
+            policy_version=policy_version,
+            dispatch_grant_id=grant_id,
+            action_fingerprint=fingerprint,
         )
 
     @staticmethod

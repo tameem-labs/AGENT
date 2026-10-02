@@ -1,105 +1,88 @@
 # ZYRO
 
-ZYRO is specified as a personal Executive AI, computer agent, and AI organization. The user will interact with one canonical Executive while internal components coordinate domains, agents, models, tools, workflows, state, knowledge, security, execution, and verification.
+ZYRO 0.11.0 is a runnable local-first Personal Executive AI product. It exposes an authenticated localhost interface backed by the same canonical Executive, Task, Agent, Model Router, Workflow, Resource, Verification, Recovery, and domain contracts used by the library.
 
-This repository has completed the **Final Round 2 — E2E Hardening, System Integration, and Production-readiness Assessment** at version **0.10.0**. The controlled local freelancing lifecycle and prior Executive/Task/Agent, authorization, durable communication, data, recovery, observability, and resource foundations have code-level architecture guards, adversarial authority tests, success/failure E2E evidence, and restart/idempotency hardening. Exact outreach approvals now also bind requester/request/Task/workflow context; identical approval callbacks and verified evidence are idempotent while conflicts fail closed. Version 1.0 readiness is **not met**: external channels remain adapter-only, the bundled channel is explicitly simulated, Permission/Approval are process-local, and no formal database migration/deployment/provider operations platform exists. The repository still does **not** include a scheduler, workflow engine, browser/computer control, UI, payments, distributed deployment, or autonomous outreach.
+The product is honest about its boundaries: the bundled conversational provider and OAuth provider are explicit local-development adapters. Google, GitHub, Instagram, real email/CRM, browser control, and voice require separately configured provider adapters and are shown as **NOT CONFIGURED** or **UNAVAILABLE**—never as working integrations.
 
-> Naming note: historical delivery phases 1–4 were offset by one from roadmap phases 0–3. `PROGRESS.md` records actual implementation status and phase mapping.
+## Start locally
 
-## Requirements
-
-- Python 3.11 or newer
-- `pip`
-- No API key, external database, container, network access, or external service is needed for development/tests
-
-## Development setup
+Requirements: Python 3.11+ and `pip`.
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate          # Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 python -m pip install -e ".[dev]"
+zyro serve
 ```
 
-Run the foundation package:
+Open **http://127.0.0.1:8000**. On first use, create a 12+ character local-owner password. The password is scrypt-hashed; session tokens are hashed; mutation requests require a same-origin CSRF token in addition to the HttpOnly session cookie.
+
+Useful commands:
 
 ```bash
-python -m zyro
-```
-
-The command initializes safe configuration and logging, then exits. It does not contact an AI provider. Application code composes `ZyroExecutive` from an `AgentRegistry`, `AgentRuntime`, bounded `AgentHandler` implementations, and an optional independent `Verifier`. Without a verifier, successful execution is explicitly reported as `SUCCEEDED_UNVERIFIED`; it is never promoted to `DONE` or `VERIFIED`.
-
-Core contracts are located at:
-
-- `src/zyro/core/` — Executive, Task lifecycle, shared errors/risk/verification contracts, configuration, and logging
-- `src/zyro/security/` — scoped permission, risk-path policy, action-bound approval, and tool authorization composition
-- `src/zyro/agents/` — definitions, instances, handlers, and registry
-- `src/zyro/models/` — model requirements/definitions/results, provider registry, model registry, and deterministic router
-- `src/zyro/tools/` — bounded definitions/calls/results, registry, schema validation, and executor
-- `src/zyro/runtime/agent_runtime.py` — one bounded agent attempt with optional model/tool service boundaries
-- `src/zyro/execution/verification.py` — independent structural verification protocol
-- `src/zyro/domains/freelancing/` — qualification plus exact-message outreach, idempotent channel adapters, reply intake/processing, project state, canonical delivery Tasks, QA, and handoff
-- `src/zyro/communication/` — authorized Direct Message delivery and the local durable SQLite Event Bus
-- `src/zyro/memory/` — selective historical records, provenance, retention, correction, forgetting, and bounded retrieval
-- `src/zyro/state/` — owner-controlled current snapshots with compare-and-set revisions
-- `src/zyro/knowledge/` — controlled reference ingestion, deterministic chunking, source versions, and retrieval
-- `src/zyro/context/` — permission-filtered transient assembly with provenance, precedence, deduplication, and budgets
-- `src/zyro/recovery/` — failure taxonomy, deterministic bounded decisions, durable operation/reconciliation state, and Task/Event adapters
-- `src/zyro/observability/` — redacted durable operational traces, bounded queries, and fail-open runtime/model/tool adapters
-- `src/zyro/resources/` — token accounting, hard stops, concurrency queues, leases, lanes, rate limits, and the narrow Recovery bridge
-- `src/zyro/core/events.py` — canonical Event envelope plus the compatibility in-process publisher
-
-Providers and tools are registered programmatically with non-secret definitions. The repository ships no product provider adapter and requires no API key. Deterministic providers, tools, and lead fixtures under `tests/` are test infrastructure only. Model-requested tool calls are inert data: every supported tool execution passes through a required, separate authorizer before the handler. Capability, risk classification, standing permission, action approval, execution, verification, and Task completion remain distinct.
-
-Freelancing qualification/scoring is pure policy evaluation and does not invoke a tool or grant authority. Each stage is independently reproduced against the same authoritative lead revision and policy before a compare-and-set state write. A score remains business output only. `LEAD_QUALIFIED` is durably persisted only after the final verified state commit. Lead state and event persistence are not one atomic transaction; an explicit idempotent reconciliation method repairs a reported publication failure without making the Event Bus authoritative for lead state.
-
-Operational Freelancing extends that verified lead with immutable outreach preparations containing the exact recipient/channel/message, evidence, policy, and verification plan. `send_outreach` is always `STRICT_AUTHORIZATION`: the existing permission evaluator runs at dispatch, and the existing expiring Approval service binds exact arguments plus a safe human-readable review display. The only bundled outbound adapter is explicitly simulated. Durable action identities prevent duplicate dispatch, interrupted `DISPATCHING` work reopens as `UNCERTAIN`, and Phase 8 Recovery permits reconciliation—not blind resend. Provider acceptance, delivery, and independent verification remain distinct.
-
-Validated external replies are persisted and published as data before deterministic advisory classification; reply text has no tool, permission, approval, contract, or project authority. Potential projects begin `PROJECT_PENDING` and require explicit compare-and-set activation. Delivery work runs through canonical Executive/Task/Agent/Verification under Resource reservations. QA records criteria/evidence and can fail or remain inconclusive. Handoff reaches verified completion only when canonical delivery Tasks, deliverables, and QA evidence are all verified.
-
-The Event Bus provides **at-least-once** local delivery, not exactly-once execution and not global ordering. Ordering applies only per subscriber and configured ordering key. Handler bindings are process-local and must be rebound after restart; persisted unknown subscriptions remain pending. Direct Message handler timeout detection is cooperative for synchronous handlers. Both communication paths reuse Phase 4 permission evaluation and fail closed before delivery.
-
-Memory, State, Knowledge, and Context remain separate authorities. Memory stores explicit historical assertions—not every interaction—and distinguishes fact from inference, provenance, scope, privacy, retention, supersession, contradiction, and forgetting. State stores only current snapshots under a configured subsystem owner and rejects stale compare-and-set writes. Knowledge stores controlled source/version chunks and normally retrieves only the current version. Context persists nothing: it combines explicit user/task input with permitted current State, effective Memory, and current Knowledge using deterministic lexical relevance, source precedence, deduplication, and hard record/character/source budgets. None of these records grant permission or approval.
-
-## Quality checks
-
-```bash
-pytest
+zyro serve --host 127.0.0.1 --port 8000 --data-dir .zyro
+zyro check
+zyro backup backups/local
+pytest -q
 ruff check .
 ruff format --check .
 mypy
 ```
 
-Tests are separated into `tests/unit`, `tests/integration`, and `tests/architecture`.
+For an Arena/live-preview host, bind explicitly with `zyro serve --host 0.0.0.0`.
 
-## Configuration and secrets
+## Actual local product
 
-Safe defaults need no local configuration. ZYRO reads these optional process environment variables:
+- **Executive chat:** every message creates a durable Workflow and runs a canonical Executive → Task → Agent → Model Router → Resource accounting → independent structural Verification path.
+- **Active work and Task detail:** real Task projections show status, agent, model, workflow, attempts, resource limits, verification, errors, and result.
+- **Workflows:** durable DAG steps, dependencies, attempts, waiting, approval-required state, retry, pause, resume, cancellation, completion, event/schedule contracts, and restart recovery.
+- **Agents:** real Executive and domain capability metadata without secrets.
+- **Approval Center:** reserved for canonical backend Approval state; no frontend-only approval authority exists.
+- **Memory and Activity:** honest canonical state views and correlated Workflow history. Credentials never enter Memory.
+- **Integration Center:** provider-neutral definitions, multiple account records, server-side OAuth state and PKCE, callback exchange, encrypted local token vault, disconnect/revoke, scopes, health, and connected account display.
+- **System Status and Settings:** actual local runtime, provider, Workflow, Task, integration, voice, and browser availability.
+- **Responsive dark frontend:** static product assets are served by the authenticated FastAPI application; the browser never accesses SQLite directly.
 
-- `ZYRO_ENV` (default: `development`)
-- `ZYRO_LOG_LEVEL` (default: `INFO`)
-- `ZYRO_TASK_TOKEN_LIMIT` (default: `50000`)
-- `ZYRO_WORKFLOW_TOKEN_LIMIT` (default: `300000`)
-- `ZYRO_MAX_CONCURRENT_TASKS` (default: `8`)
-- `ZYRO_MAX_CONCURRENT_AGENTS` (default: `8`)
-- `ZYRO_MAX_CONCURRENT_TOOL_CALLS` (default: `4`)
+## Safety changes in 0.11.0
 
-`config/default.toml` documents equivalent non-secret settings. Code can explicitly pass a TOML path to `initialize_runtime`; local overrides should use ignored `config/local.toml`. The package intentionally does not auto-load `.env`, but `.env` and common secret paths are ignored for developer tooling. Never commit credentials or put secrets in config files, source, logs, or ordinary memory.
+- Trusted domain verification now requires verifier-issued, HMAC-authenticated evidence binding subject/action, Task, Workflow, source, reference, digest, verifier, method, result, timestamp, and trust class. Arbitrary strings and `passed=True` no longer create trusted outreach, deliverable, QA, or Handoff completion.
+- Local authentication is separate from Permission and Approval. OAuth permission is also separate from ZYRO action authority.
+- Short-lived one-use dispatch grants revalidate authority at claim immediately before handler execution. Once claimed, execution is explicitly considered started; no atomicity with an external provider is claimed.
+- Model invocations are Resource-aware and enforce Task/Workflow accounting. Unknown successful provider usage fails conservatively rather than silently bypassing accounting.
+- Configured generic Tool timeouts execute through a bounded daemon worker. If a blocking operation cannot be stopped, the outcome is `UNKNOWN`, not safe automatic retry.
+- Verified Handoff persistence and project completion now share one SQLite transaction and durable completion operation.
+- Delivery operations are persisted before Executive execution. Interrupted operations reopen as `UNCERTAIN` and are not blindly repeated.
+- SQLite project, Workflow, identity, application, integration, Resource, and credential state survive local restart. `zyro check` and `zyro backup` provide integrity and backup operations.
 
-## Repository guide
+## Integration and OAuth configuration
 
-- `src/zyro/` — Python source and subsystem boundaries
-- `tests/` — executable unit, integration, and architecture checks
-- `config/` — non-secret configuration examples/defaults
-- `docs/` — product, architecture, contract, policy, and development sources
-- `domains/` — domain specifications
-- `src/zyro/domains/` — implemented bounded domain consumers of Core
-- `PROJECT_MAP.md` — directory ownership, architecture layers, and source-of-truth rules
-- `PROGRESS.md` — append-only implementation and verification history
-- `docs/05_DEVELOPMENT/PRODUCTION_READINESS.md` — factual implemented/partial/adapter-only limitations and the 1.0 readiness decision
+Normal connection management happens in the UI. The frontend never accepts or receives refresh tokens. Backend flow:
 
-Start with `START_HERE.md`, then read the master specification and invariants in `docs/00_MASTER/`. Before making implementation changes, read `PROGRESS.md` and `PROJECT_MAP.md`.
+```text
+UI → OAuth initiation → provider → callback → backend exchange
+   → encrypted credential vault → scoped Integration Connection → bounded Tool
+```
 
-## Status discipline
+The development OAuth connector is explicitly simulated and useful for local testing. Google/GitHub/Instagram definitions are visible but not configured because this repository contains no provider client credentials. A real adapter must supply its OAuth endpoints and token exchange server-side. OAuth scopes do not grant ZYRO Tool Permission or action Approval.
 
-Documentation describes intended behavior; source and tests show what exists. `PROGRESS.md` must be updated after verified work and must retain prior entries. Do not label a documented capability as implemented, tested, or verified without corresponding code and evidence.
+Local credentials are AES-GCM encrypted with a randomly generated mode-0600 key under `ZYRO_DATA_DIR`. Do not commit `.zyro`, `.env`, provider secrets, databases, or backup files.
+
+## Architecture map
+
+- `src/zyro/api/` — authenticated FastAPI boundary and responsive frontend
+- `src/zyro/application/` — UI-independent application composition and projections
+- `src/zyro/workflows/` — minimal durable Workflow contracts, store, runner, and local triggers
+- `src/zyro/security/` — local identity/session, Permission, Approval, dispatch grant, and authorization
+- `src/zyro/integrations/` — definitions, connections, OAuth state, provider accounts, scopes, health, encrypted credentials
+- `src/zyro/core/`, `agents/`, `runtime/` — Executive, canonical Task, Agent runtime
+- `src/zyro/models/`, `tools/`, `resources/` — replaceable models, bounded tools, runtime accounting
+- `src/zyro/execution/` — structural verification and trusted evidence authority
+- `src/zyro/communication/`, `recovery/`, `observability/` — transport, safe decisions, and traces
+- `src/zyro/memory/`, `state/`, `knowledge/`, `context/` — separate data authorities
+- `src/zyro/domains/freelancing/` — controlled qualification, outreach, reply, delivery, QA, and Handoff
+
+See `PROJECT_MAP.md`, `PROGRESS.md`, and `docs/05_DEVELOPMENT/PRODUCTION_READINESS.md` for exact ownership and limitations.
+
+## Current limitations
+
+ZYRO is a usable local product, not a production cloud deployment. No live external model, Gmail, Drive, Calendar, GitHub, Instagram, email/CRM, webhook, browser/computer, voice, payment, distributed worker, TLS termination, HA, or monitoring SaaS is bundled. The local development model is deterministic and does not claim general reasoning or external research. Permission and Approval records outside the authenticated application composition remain process-local. Multi-process SQLite operation is not qualified. Version 1.0 production readiness is not claimed.

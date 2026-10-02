@@ -10,11 +10,52 @@ This file is a chronological, append-only implementation record. Add new entries
 
 ## Current status
 
-- **Current delivery phase:** Final Round 2 — E2E Hardening + System Integration + Production-readiness Assessment — **VERIFIED**
-- **Architecture-roadmap equivalent:** Final local-system hardening; no further feature phase is authorized
-- **Next permitted work:** None by default. Any production integration must be separately scoped and reviewed.
-- **Known blockers:** Version 1.0 readiness is blocked by process-local authority, absent formal database migrations/backup operations, absent credentialed provider-specific integrations and verification, and absent deployment/authentication/multi-process qualification.
-- **Explicitly not implemented:** credentialed production email/CRM/model/webhook providers, scheduler, full workflow engine, lead-finding integrations, browser/computer control, voice/camera, UI/dashboard, payments/billing/contracts, unrestricted autonomous outreach, distributed/cloud deployment, monitoring SaaS, and deployment operations remain **ADAPTER ONLY**, **SIMULATED**, **NOT IMPLEMENTED**, or **FUTURE** as stated below.
+- **Current delivery phase:** Product Implementation Round 1 — authenticated local vertical product — **IMPLEMENTED AND TESTED**
+- **Architecture-roadmap equivalent:** Local UI/API/Workflow/Integration foundation over the canonical Executive runtime
+- **Next permitted work:** Provider-specific configuration and bounded adapters may be added only with explicit credentials and review.
+- **Known blockers:** Version 1.0 readiness remains blocked by absent credentialed production providers, durable production Permission/Approval service, deployment/TLS/HA operations, and multi-process qualification.
+- **Explicitly not implemented:** live Google/GitHub/Instagram/email/CRM/model providers, autonomous lead discovery, production browser/computer control, configured voice, payments/billing/contracts, unrestricted autonomous outreach, distributed/cloud deployment, monitoring SaaS, and production deployment operations remain **NOT CONFIGURED**, **ADAPTER ONLY**, **UNAVAILABLE**, or **NOT IMPLEMENTED**.
+
+---
+
+## 2026-10-02 — Product Implementation Round 1
+
+### Status
+
+**IMPLEMENTED AND TESTED AS A LOCAL PRODUCT; EXTERNAL PROVIDERS REMAIN NOT CONFIGURED** — package advanced to **0.11.0**.
+
+### Product implementation
+
+- Added an authenticated FastAPI application boundary and premium responsive frontend under `src/zyro/api/`. The UI provides Executive chat, real Task state/detail, Workflows and controls, Agents, Approval Center, Memory state, Activity, Integration Center, System Status, Settings, explicit voice/browser availability, and responsive localhost operation.
+- Added one-command startup with `zyro serve`; default URL is `http://127.0.0.1:8000`. Added `zyro check` and `zyro backup` local database operations.
+- Added local-owner authentication with scrypt password digests, hashed expiring session tokens, HttpOnly SameSite cookies, CSRF checks, origin checks, revocation, and a strict distinction between authentication, Permission, Approval, and execution authority.
+- Added the smallest durable Workflow runtime needed by the product: DAG validation, step dependencies/attempts, waiting/approval/retry/pause/resume/cancel/complete states, immediate/scheduled/recurring/event trigger contracts, history, stable identities, and restart recovery. Scheduling is cooperative local polling, not a hidden distributed worker.
+- Connected UI chat through Application API → Workflow → Executive → canonical Task → Agent Runtime → Model Router → local-development provider → Resource accounting → structural Verification → durable UI projection. The local provider is explicitly local/deterministic and reports absent external integrations honestly.
+- Added provider-neutral Integration Definitions, Connections, Provider Accounts, scopes, health, server-side OAuth state/PKCE/callback contracts, multiple-account storage, disconnect/revoke, and an AES-GCM credential vault with a mode-0600 local master key. Refresh/access tokens are never returned to the frontend. Google/GitHub/Instagram remain visible but NOT CONFIGURED; only an explicit development OAuth test adapter is bundled.
+
+### High-finding remediation
+
+- Replaced caller strings/booleans as trusted domain verification with verifier-issued signed evidence binding subject, action/execution context, Task, Workflow, source, reference, digest, verifier, timestamp, method, result, claims, and LOCAL/EXTERNAL/SIMULATED trust.
+- Outreach delivery, project deliverables, QA, and verified Handoff now require valid verifier evidence. Forged signatures, wrong subjects, changed evidence, and simulated evidence fail closed.
+- Added short-lived one-use dispatch grants. Authority is re-evaluated at grant claim immediately before handler execution; revocation/cancellation before claim blocks. Claim means execution has started, and no atomic external-provider guarantee is claimed.
+- Integrated model execution with Resource accounting. Input is conservatively admitted before provider work, reported usage is reconciled, and unknown successful usage fails rather than bypassing the budget.
+- Added actual generic Tool timeout enforcement. Blocking work that cannot be forcibly cancelled returns UNKNOWN external-side-effect uncertainty and is not represented as a safe timeout retry.
+- Made verified Handoff persistence and project completion one transaction with a durable completion operation and idempotent reconciliation.
+- Added durable Delivery operations before Executive execution; restart converts unresolved RUNNING operations to UNCERTAIN and duplicate calls do not blindly re-execute.
+
+### Validation evidence
+
+- Existing 309-test baseline retained and expanded with product API/UI, authentication/CSRF/session, OAuth connect/disconnect/encryption, trusted verification forgery, dispatch grant race, Workflow, Tool timeout, Resource accounting, restart and vertical-product tests.
+- Final validation gate: `pytest -q` **317 passed**; `mypy src tests` **success across 163 source files**; Ruff lint and format checks **passed across 163 files**; `pip check` reported no broken requirements; module startup initialized successfully; real Uvicorn startup reached `0.0.0.0:8000`; `/` returned 200; an unauthenticated `/api/status` returned 401; all five new product SQLite stores passed `PRAGMA integrity_check`; `git diff --check` passed.
+
+### Honest limitations
+
+- Static frontend assets are production-built files served directly by FastAPI; there is no separate Node build pipeline.
+- The bundled model and OAuth provider are explicit local-development adapters. No real external account or provider is claimed.
+- Approval Center has no fabricated requests; it remains empty until a canonical backend action creates one.
+- Voice is provider-neutral UI architecture with NOT CONFIGURED state. Browser/computer is shown UNAVAILABLE; no unsafe control adapter was added.
+- Migrations are forward-only primitives for new product stores; historical stores still require further per-schema migration registration before a production compatibility claim.
+- The local process is synchronous and SQLite-backed. Distributed execution, worker HA, production TLS/auth federation, and multi-process qualification are not implemented.
 
 ---
 

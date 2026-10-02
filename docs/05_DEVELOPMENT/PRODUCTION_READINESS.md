@@ -1,39 +1,38 @@
 # Production-readiness assessment
 
-Assessment date: 2026-10-02. Package version: 0.10.0.
+Assessment date: 2026-10-02. Package version: 0.11.0.
 
-This checklist describes demonstrated repository guarantees. It does not treat test coverage as proof that an unavailable production integration exists.
+This matrix reports demonstrated behavior. A passing local test does not imply that an unconfigured external provider exists.
 
 | Area | Status | Demonstrated boundary | Remaining limitation |
 | --- | --- | --- | --- |
-| Core Task and Agent Runtime | IMPLEMENTED | Canonical finite Task lifecycle, bounded Agent attempts, independent verification | Synchronous single-process runtime; no scheduler or worker service |
-| Architecture ownership | IMPLEMENTED | Automated guards keep Agent/Model/Tool, Task/Workflow, execution/verification, transport/state, and data subsystem ownership separate | Guards cover repository code, not unknown downstream applications |
-| Permission | PARTIAL | Explicit scoped, revocable, expirable, default-deny evaluation at execution | In-process grants are not a durable identity or authentication service |
-| Approval | PARTIAL | Exact-action human decisions bind executor, requester, request, Task, workflow, target, arguments, conditions, expiry, and policy; duplicate identical decisions are idempotent | In-process pending decisions are intentionally lost on restart and fail closed; no production approval UI/authentication |
-| Tool execution | IMPLEMENTED | Registered bounded handlers execute only after canonical authorization; malformed/disabled/unauthorized calls fail closed | Provider-specific timeout cancellation remains adapter responsibility |
-| Verification | IMPLEMENTED | Execution result and independent verification are distinct; missing/conflicting evidence cannot silently verify outreach or handoff | Structural verifier is intentionally basic; provider-specific verifiers are adapters |
-| Recovery | IMPLEMENTED | Finite deterministic decisions, durable operation/decision records, restart reconciliation, and no blind uncertain-side-effect retry | Recovery recommends actions; callers explicitly execute safe continuation |
-| Resource controls | IMPLEMENTED | Default 50,000/task and 300,000/workflow token limits, concurrency, queues, leases, local rate windows, precision, hard-stop history | Local process/SQLite coordination only; unknown usage cannot become exact accounting |
-| Observability | IMPLEMENTED | Durable bounded correlated traces with recursive redaction and fail-open adapters | No exporter, monitoring backend, alerts, dashboard, or distributed tracing |
-| Event Bus | IMPLEMENTED | Durable local at-least-once delivery, ACK identity, finite retry, ordering key, dead letters, duplicate publication protection, and restart recovery | No exactly-once execution, global ordering, external broker, or durable handler code binding |
-| Direct Messages | IMPLEMENTED | Authorized bounded point-to-point delivery with identity deduplication | Synchronous timeout is cooperative |
-| Memory | IMPLEMENTED | Scoped selective durable assertions, retention, correction, forgetting, and secret-shaped-data rejection | Lexical local retrieval; no automatic consolidation |
-| State | IMPLEMENTED | Owner-controlled current snapshots and compare-and-set revisions | Not a cross-store transaction coordinator |
-| Knowledge | IMPLEMENTED | Versioned controlled ingestion and bounded current-reference retrieval | Lexical chunks only; no vector/semantic platform |
-| Context | IMPLEMENTED | Transient permission-filtered assembly with provenance, precedence, deduplication, and hard budgets | No token-model-specific tokenizer; character budgets are deterministic approximations |
-| Model Router | IMPLEMENTED | Capability/availability-driven replaceable selection and bounded fallback | Repository ships no live model provider |
-| Freelancing qualification | IMPLEMENTED | Deterministic validated/qualified/scored lead pipeline with verified provenance | Lead discovery and external research integrations are not implemented |
-| Outreach | ADAPTER ONLY | Exact immutable preparation, strict Tool authorization, durable side-effect identity, uncertainty, reconciliation, and independent verification | Bundled channel is explicitly SIMULATED; no production email/CRM provider or credentials |
-| Reply intake and processing | IMPLEMENTED | Validated durable deduplication, idempotent event reconciliation, and advisory classification | No webhook server or semantic classifier; external identity is untrusted |
-| Project and delivery | IMPLEMENTED | Durable compare-and-set project lifecycle and canonical resource-gated Executive Tasks | Bounded domain lifecycle, not project-management SaaS or a scheduler |
-| QA and handoff | IMPLEMENTED | Evidence-backed QA and idempotent condition-gated verified completion | No artifact storage or domain-specific quality framework |
-| SQLite durability | PARTIAL | WAL-backed constrained schemas, transactions, indexes, CAS, terminal protection, and restart tests | No schema-version table, formal migration runner, backup/restore automation, encryption-at-rest management, or multi-process qualification |
-| Secret safety | IMPLEMENTED | Bounded validators reject secret-shaped fields/assignments; telemetry redacts recursively; repository scans run | Cannot guarantee arbitrary downstream adapter behavior |
-| Deployment | NOT IMPLEMENTED | None claimed | No production service host, authentication, TLS termination, HA, distributed locks, containers, cloud, or Kubernetes |
-| External production integrations | NOT IMPLEMENTED | None claimed | Email, CRM, webhook, model, monitoring, and identity providers remain future adapters |
+| Local product UI/API | IMPLEMENTED | Authenticated responsive UI uses canonical Application API and real Task/Workflow state | Local FastAPI process; no production TLS/HA deployment |
+| Core Task and Agent Runtime | IMPLEMENTED | Finite Task attempts, Agent instances, model/tool boundaries, independent verification | Canonical Task itself remains in-process; product projections and Workflows are durable |
+| Workflow | IMPLEMENTED | Durable DAG, dependencies, attempts, controls, history, immediate/schedule/recurrence/event contracts, restart recovery | Scheduler is cooperative local polling, not a worker service |
+| Local authentication | IMPLEMENTED | Scrypt owner password, hashed sessions, expiry/revocation, HttpOnly cookie, CSRF and origin checks | Single local owner; no passkeys, federation, or remote identity provider |
+| Permission and Approval | PARTIAL | Separate default-deny Permission and exact action Approval; dispatch grants revalidate at claim | Policy records remain process-local; no production durable authority service |
+| Dispatch TOCTOU | PARTIAL | Short-lived signed one-use grant is revalidated and atomically claimed immediately before handler | Claim means execution started; no atomic control over an external provider is claimed |
+| Verification authority | IMPLEMENTED | Signed evidence binds subject/action/Task/Workflow/source/reference/digest/verifier/time/method/result/trust | Local HMAC authority; provider-specific external verifiers remain adapters |
+| Tool execution | IMPLEMENTED | Authorization, grant claim, schema checks, configured timeout and UNKNOWN side-effect outcome | Blocking Python thread cannot be forcibly killed; no process sandbox |
+| Model Router/runtime | PARTIAL | Replaceable capability router plus actual Task/Workflow usage accounting and conservative unknown usage | Local deterministic provider only; invocation fallback and provider cancellation remain limited |
+| Resource controls | IMPLEMENTED | 50,000/Task and 300,000/Workflow defaults, accounting, hard stops, concurrency, leases, queues, rate windows | SQLite single-process qualification; no distributed quota coordination |
+| Recovery | IMPLEMENTED | Finite deterministic decisions, durable operation/decision records, no blind uncertain-effect retry | Recovery decisions require caller composition |
+| Event Bus | IMPLEMENTED | Durable local at-least-once delivery, ACK identity, finite retry, ordering key and dead letters | No exactly-once execution, global ordering, or external broker |
+| Memory/State/Knowledge/Context | IMPLEMENTED | Separate scoped stores and transient permission-filtered Context | Lexical local behavior; no semantic/vector service |
+| Observability/Activity | PARTIAL | Bounded redacted traces and durable Workflow history exposed through API/UI | No exporter, alerts, metrics backend, or distributed tracing |
+| Integration Center | IMPLEMENTED | Definitions, multiple account connections, scopes, health, server-side OAuth/PKCE, callback, revoke | Real provider clients are not configured |
+| Credential storage | IMPLEMENTED | AES-GCM vault and mode-0600 local key; refresh tokens never returned to frontend | No OS keychain/HSM integration or key rotation workflow |
+| Google/Gmail/Drive/Calendar | NOT CONFIGURED | Definition and scope display only | Requires reviewed backend OAuth provider configuration and bounded tools |
+| GitHub | NOT CONFIGURED | Definition and scope display only | Requires reviewed backend OAuth provider configuration and bounded tools |
+| Instagram | NOT CONFIGURED | Definition and scope display only | Requires reviewed backend OAuth provider configuration and bounded tools |
+| Development OAuth | SIMULATED | Safe state/PKCE/connect/disconnect test flow | Not an external account or production provider |
+| External outreach | ADAPTER ONLY | Exact payload, Approval, dispatch grant, durable identity, uncertainty and verifier evidence | No credentialed email/CRM adapter |
+| Freelancing delivery/QA/Handoff | IMPLEMENTED | Durable delivery operation, signed deliverable/QA evidence, atomic verified Handoff completion | No artifact repository or domain-specific external verifier |
+| Browser/computer | UNAVAILABLE | Safe future boundary/status only | No control adapter is implemented |
+| Voice | NOT CONFIGURED | Provider-neutral UI status; voice grants no authority | No STT/TTS/live-audio provider |
+| Database operations | PARTIAL | WAL stores, stable IDs, integrity command, online backup, forward migration primitive | Historical stores are not all registered in one migration catalog; no encryption-at-rest for ordinary state |
+| Production deployment | NOT IMPLEMENTED | None claimed | No TLS termination, service supervisor, HA, distributed locks, cloud or Kubernetes |
 
 ## 1.0 readiness decision
 
-**NOT MET.** Version 1.0.0 is intentionally not declared. Core local behavior is hardened and comprehensively testable, but production readiness still requires durable authenticated Permission/Approval composition, formal SQLite migrations and backup/restore procedures, real provider-specific adapters and verification, deployment/security operations, and multi-process/concurrency qualification. Those are known limitations, not hidden fallbacks.
-
-No new feature phase is authorized by this assessment. Future work should be proposed as separately reviewed, bounded production integration work.
+**NOT MET.** Version 0.11.0 is a usable local product. Production readiness still requires durable authenticated Permission/Approval composition, provider-specific OAuth and execution adapters, external verification, complete per-store migration registration, key rotation/backup operations, multi-process qualification, and deployment/security operations.

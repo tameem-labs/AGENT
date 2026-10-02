@@ -18,6 +18,11 @@ from zyro.core.data import plain, validate_record, validate_text
 from zyro.core.errors import ErrorInfo
 from zyro.core.events import Event, EventDelivery, EventPublisher, RetryPolicy
 from zyro.core.risk import RiskClass
+from zyro.execution.evidence import (
+    TrustedVerificationEvidence,
+    VerificationAuthority,
+    VerificationSubject,
+)
 from zyro.observability import TraceContext, TraceStatus
 from zyro.observability.service import Observer
 from zyro.recovery import (
@@ -652,6 +657,7 @@ class OutreachService:
         publisher: EventPublisher,
         *,
         observer: Observer | None = None,
+        verification_authority: VerificationAuthority | None = None,
         clock: Callable[[], datetime] = _utc_now,
         id_factory: Callable[[], str] | None = None,
     ) -> None:
@@ -659,6 +665,7 @@ class OutreachService:
         self._tools = tool_invoker
         self._publisher = publisher
         self._observer = observer
+        self._verification_authority = verification_authority
         self._clock = clock
         self._id_factory = id_factory or (lambda: str(uuid4()))
 
@@ -725,24 +732,35 @@ class OutreachService:
         self,
         external_action_id: str,
         *,
-        verification_reference: str | None,
+        evidence: TrustedVerificationEvidence,
     ) -> OutreachExecution:
         record = self._store.action_required(external_action_id)
         preparation = self._store.preparation(record.preparation_id)
+        expected = VerificationSubject(
+            "outreach_delivery",
+            external_action_id,
+            action_id=external_action_id,
+            task_id=preparation.task_id,
+            workflow_id=preparation.workflow_id,
+        )
+        valid = self._verification_authority is not None and self._verification_authority.validate(
+            evidence, expected
+        )
+        if not valid:
+            raise OutreachStoreError("trusted outreach verification evidence is invalid")
         if (
             record.status in {OutreachStatus.DELIVERED, OutreachStatus.VERIFIED}
             and not record.simulated
-            and verification_reference is not None
         ):
             was_verified = record.status is OutreachStatus.VERIFIED
-            record = self._store.mark_verified(external_action_id, verification_reference)
+            record = self._store.mark_verified(external_action_id, evidence.fingerprint)
             status = OutreachStatus.VERIFIED
             if not was_verified:
                 self._emit(
                     preparation,
                     "OUTREACH_VERIFIED",
                     status,
-                    verification_id=record.verification_reference,
+                    verification_id=evidence.evidence_id,
                 )
         elif record.status in {OutreachStatus.ACCEPTED, OutreachStatus.DELIVERED}:
             status = OutreachStatus.SUCCEEDED_BUT_UNVERIFIED

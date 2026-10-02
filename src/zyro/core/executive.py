@@ -26,6 +26,7 @@ class UserRequest:
     correlation_id: str | None = None
     priority: TaskPriority = TaskPriority.NORMAL
     max_attempts: int = 1
+    workflow_id: str | None = None
 
     def __post_init__(self) -> None:
         for field_name in ("goal", "requester", "agent_id"):
@@ -33,7 +34,7 @@ class UserRequest:
             if not isinstance(value, str) or not value.strip():
                 raise InvalidRequestError(f"{field_name} must be a non-empty string")
             object.__setattr__(self, field_name, value.strip())
-        for field_name in ("request_id", "correlation_id"):
+        for field_name in ("request_id", "correlation_id", "workflow_id"):
             value = getattr(self, field_name)
             if value is not None:
                 if not isinstance(value, str) or not value.strip():
@@ -98,6 +99,7 @@ class ZyroExecutive:
             verification_plan=(
                 "injected verifier" if self._verifier is not None else "no verifier available"
             ),
+            workflow_id=request.workflow_id,
         )
         logger = get_logger(
             "executive",

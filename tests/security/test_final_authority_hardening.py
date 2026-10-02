@@ -6,7 +6,12 @@ from typing import Any
 
 import pytest
 
-from tests.unit.test_freelancing_outreach import DeliveredAdapter, preparation, system
+from tests.unit.test_freelancing_outreach import (
+    DeliveredAdapter,
+    outreach_evidence,
+    preparation,
+    system,
+)
 from zyro.core.errors import InvalidTaskError
 from zyro.core.events import Event, EventDelivery
 from zyro.core.task import Task
@@ -192,17 +197,15 @@ def test_delivery_verification_is_idempotent_and_conflicting_evidence_is_rejecte
     )
     assert dispatched.status is OutreachStatus.DELIVERED
 
-    first = service.verify_delivery(
-        item.external_action_id, verification_reference="independent-evidence-1"
-    )
-    repeated = service.verify_delivery(
-        item.external_action_id, verification_reference="independent-evidence-1"
-    )
+    evidence = outreach_evidence(service, item, "independent-evidence-1")
+    first = service.verify_delivery(item.external_action_id, evidence=evidence)
+    repeated = service.verify_delivery(item.external_action_id, evidence=evidence)
 
     assert first.status is repeated.status is OutreachStatus.VERIFIED
     with pytest.raises(OutreachStoreError, match="conflicting verification evidence"):
         service.verify_delivery(
-            item.external_action_id, verification_reference="different-evidence"
+            item.external_action_id,
+            evidence=outreach_evidence(service, item, "different-evidence"),
         )
     assert adapter.calls == [item.external_action_id]
     resources.close()

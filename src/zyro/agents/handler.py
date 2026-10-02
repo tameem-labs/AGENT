@@ -48,6 +48,7 @@ class ExecutionContext:
     requester_id: str | None = None
     pending_approval_id: str | None = None
     context_provider: ContextProvider | None = None
+    workflow_id: str | None = None
 
     def request_context(
         self,
@@ -110,6 +111,7 @@ class ExecutionContext:
             correlation_id=self.correlation_id,
             system_instruction=system_instruction,
             structured_output_schema=structured_output_schema,
+            workflow_id=self.workflow_id,
         )
         validation_error = model_request.validation_error()
         if validation_error is not None:
@@ -156,6 +158,7 @@ class ExecutionContext:
             approval_id=approval_id or self.pending_approval_id,
             conditions={} if conditions is None else conditions,
             approval_context={} if approval_context is None else approval_context,
+            workflow_id=self.workflow_id,
         )
         validation_error = call.validation_error()
         if validation_error is not None:

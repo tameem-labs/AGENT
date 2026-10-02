@@ -10,13 +10,18 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from zyro.core.data import plain, validate_record, validate_text
 from zyro.core.events import Event, EventDelivery, EventPublisher, RetryPolicy
 from zyro.core.executive import ExecutiveOutcome, ExecutiveResult, UserRequest, ZyroExecutive
 from zyro.domains.freelancing.replies import ClientReply, ReplyProcessingResult
+from zyro.execution.evidence import (
+    TrustedVerificationEvidence,
+    VerificationAuthority,
+    VerificationSubject,
+)
 from zyro.observability import TraceContext, TraceStatus
 from zyro.observability.service import Observer
 from zyro.resources import AdmissionOutcome, ResourceKind, SQLiteResourceManager, WorkLane
@@ -238,9 +243,16 @@ class DeliveryTaskRecord:
 class SQLiteProjectStore:
     """Authoritative durable project aggregate with compare-and-set transitions."""
 
-    def __init__(self, path: str | Path, *, clock: Callable[[], datetime] = _utc_now) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        verification_authority: VerificationAuthority | None = None,
+        clock: Callable[[], datetime] = _utc_now,
+    ) -> None:
         self.path = Path(path)
         self._clock = clock
+        self._verification_authority = verification_authority
         self._connection = sqlite3.connect(self.path)
         self._connection.row_factory = sqlite3.Row
         self._connection.execute("PRAGMA journal_mode=WAL")
@@ -268,10 +280,33 @@ class SQLiteProjectStore:
                 project_id TEXT NOT NULL UNIQUE,
                 document_json TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS delivery_operations (
+                operation_id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                request_id TEXT NOT NULL,
+                workflow_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                task_id TEXT,
+                result_json TEXT,
+                updated_at TEXT NOT NULL,
+                UNIQUE(project_id, request_id)
+            );
+            CREATE TABLE IF NOT EXISTS handoff_operations (
+                project_id TEXT PRIMARY KEY,
+                handoff_id TEXT NOT NULL,
+                target_status TEXT NOT NULL,
+                status TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             CREATE INDEX IF NOT EXISTS idx_project_status ON projects(status,revision);
             CREATE INDEX IF NOT EXISTS idx_delivery_project ON delivery_tasks(project_id);
             """
         )
+        with self._connection:
+            self._connection.execute(
+                "UPDATE delivery_operations SET status=?,updated_at=? WHERE status=?",
+                ("UNCERTAIN", self._clock().isoformat(), "RUNNING"),
+            )
 
     def close(self) -> None:
         self._connection.close()
@@ -345,7 +380,7 @@ class SQLiteProjectStore:
         project_id: str,
         expected_revision: int,
         deliverable_id: str,
-        reference: str,
+        evidence: TrustedVerificationEvidence,
     ) -> ProjectRecord:
         current = self.get(project_id)
         if current.revision != expected_revision:
@@ -354,10 +389,20 @@ class SQLiteProjectStore:
             raise ValueError("deliverables can only verify during delivery or QA")
         if deliverable_id not in {item.deliverable_id for item in current.deliverables}:
             raise ValueError("deliverable is not registered")
+        expected = VerificationSubject(
+            "project_deliverable",
+            deliverable_id,
+            task_id=current.task_id,
+            workflow_id=current.workflow_id,
+        )
+        if self._verification_authority is None or not self._verification_authority.validate(
+            evidence, expected
+        ):
+            raise ValueError("trusted deliverable verification evidence is invalid")
         updated = replace(
             current,
             deliverables=tuple(
-                replace(item, verified=True, reference=reference)
+                replace(item, verified=True, reference=evidence.fingerprint)
                 if item.deliverable_id == deliverable_id
                 else item
                 for item in current.deliverables
@@ -374,6 +419,79 @@ class SQLiteProjectStore:
         if cursor.rowcount != 1:
             raise ValueError("stale project revision")
         return updated
+
+    def delivery_operation(self, project_id: str, request_id: str) -> Mapping[str, Any] | None:
+        row = self._connection.execute(
+            "SELECT * FROM delivery_operations WHERE project_id=? AND request_id=?",
+            (project_id, request_id),
+        ).fetchone()
+        return None if row is None else dict(row)
+
+    def begin_delivery_operation(
+        self, project_id: str, request_id: str, workflow_id: str, operation_id: str
+    ) -> Mapping[str, Any]:
+        existing = self.delivery_operation(project_id, request_id)
+        if existing is not None:
+            return existing
+        try:
+            with self._connection:
+                self._connection.execute(
+                    "INSERT INTO delivery_operations VALUES(?,?,?,?,?,NULL,NULL,?)",
+                    (
+                        operation_id,
+                        project_id,
+                        request_id,
+                        workflow_id,
+                        "RUNNING",
+                        self._clock().isoformat(),
+                    ),
+                )
+        except sqlite3.IntegrityError:
+            pass
+        return cast(Mapping[str, Any], self.delivery_operation(project_id, request_id))
+
+    def complete_delivery_operation(
+        self, operation_id: str, record: DeliveryTaskRecord, result: ExecutiveResult
+    ) -> None:
+        document = {
+            "project_id": record.project_id,
+            "workflow_id": record.workflow_id,
+            "request_id": record.request_id,
+            "task_id": record.task_id,
+            "correlation_id": record.correlation_id,
+            "agent_id": record.agent_id,
+            "instance_id": record.instance_id,
+            "attempts": record.attempts,
+            "outcome": record.outcome.value,
+            "verification_id": record.verification_id,
+            "recorded_at": record.recorded_at.isoformat(),
+        }
+        result_document = {
+            "outcome": result.outcome.value,
+            "task_status": result.task_status.value,
+            "result": plain(result.result),
+            "error_code": None if result.error is None else result.error.code,
+            "verification_id": result.verification.verification_id,
+        }
+        with self._connection:
+            self._connection.execute(
+                "INSERT INTO delivery_tasks(task_id,project_id,document_json) VALUES(?,?,?)",
+                (record.task_id, record.project_id, json.dumps(document, sort_keys=True)),
+            )
+            cursor = self._connection.execute(
+                "UPDATE delivery_operations SET status=?,task_id=?,result_json=?,updated_at=? "
+                "WHERE operation_id=? AND status=?",
+                (
+                    "COMPLETED",
+                    record.task_id,
+                    json.dumps(result_document, sort_keys=True),
+                    self._clock().isoformat(),
+                    operation_id,
+                    "RUNNING",
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("delivery operation is not running")
 
     def save_delivery_task(self, record: DeliveryTaskRecord) -> bool:
         document = {
@@ -464,6 +582,80 @@ class SQLiteProjectStore:
             if existing == handoff:
                 return False
             raise ValueError("handoff identity or project conflict") from None
+
+    def complete_verified_handoff(
+        self, handoff: HandoffRecord, project: ProjectRecord
+    ) -> ProjectRecord:
+        """Atomically persist the handoff operation and final project state."""
+        if handoff.completion is not HandoffCompletion.VERIFIED_COMPLETE:
+            raise ValueError("only a verified handoff can complete a project")
+        current = self.get(project.project_id)
+        existing = self.handoff(project.project_id)
+        if existing is not None and existing != handoff:
+            raise ValueError("handoff identity or project conflict")
+        if current.status is ProjectStatus.COMPLETED:
+            return current
+        if current.status not in {ProjectStatus.QA, ProjectStatus.HANDOFF}:
+            raise ValueError("verified handoff completion requires QA or handoff state")
+        revision_increment = 2 if current.status is ProjectStatus.QA else 1
+        completed = replace(
+            current,
+            status=ProjectStatus.COMPLETED,
+            revision=current.revision + revision_increment,
+            updated_at=self._clock(),
+        )
+        document = {
+            "handoff_id": handoff.handoff_id,
+            "project_id": handoff.project_id,
+            "client_id": handoff.client_id,
+            "deliverable_ids": list(handoff.deliverable_ids),
+            "delivery_status": handoff.delivery_status.value,
+            "qa_id": handoff.qa_id,
+            "qa_status": handoff.qa_status.value,
+            "verification_references": list(handoff.verification_references),
+            "outstanding_issues": list(handoff.outstanding_issues),
+            "completion": handoff.completion.value,
+            "created_at": handoff.created_at.isoformat(),
+        }
+        encoded_project = json.dumps(
+            _project_document(completed), sort_keys=True, separators=(",", ":")
+        )
+        with self._connection:
+            self._connection.execute(
+                "INSERT OR IGNORE INTO handoffs(handoff_id,project_id,document_json) VALUES(?,?,?)",
+                (handoff.handoff_id, handoff.project_id, json.dumps(document, sort_keys=True)),
+            )
+            self._connection.execute(
+                "INSERT INTO handoff_operations("
+                "project_id,handoff_id,target_status,status,updated_at) "
+                "VALUES(?,?,?,?,?) ON CONFLICT(project_id) DO UPDATE SET status=excluded.status,"
+                "updated_at=excluded.updated_at",
+                (
+                    project.project_id,
+                    handoff.handoff_id,
+                    ProjectStatus.COMPLETED.value,
+                    "COMPLETING",
+                    self._clock().isoformat(),
+                ),
+            )
+            cursor = self._connection.execute(
+                "UPDATE projects SET revision=?,status=?,document_json=? "
+                "WHERE project_id=? AND revision=?",
+                (
+                    completed.revision,
+                    ProjectStatus.COMPLETED.value,
+                    encoded_project,
+                    project.project_id,
+                    current.revision,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("stale project revision during handoff completion")
+            self._connection.execute(
+                "UPDATE handoff_operations SET status=?,updated_at=? WHERE project_id=?",
+                ("COMPLETED", self._clock().isoformat(), project.project_id),
+            )
+        return completed
 
     def handoff(self, project_id: str) -> HandoffRecord | None:
         row = self._connection.execute(
@@ -610,9 +802,10 @@ class QAService:
         project_id: str,
         task_id: str,
         criteria: tuple[QACriterion, ...],
-        verification_references: tuple[str, ...] = (),
+        evidence: TrustedVerificationEvidence,
     ) -> QAResult:
         project = self._store.get(project_id)
+        verification_references = (evidence.fingerprint,)
         existing = self._store.qa(project_id)
         if existing is not None:
             if (
@@ -626,6 +819,18 @@ class QAService:
             raise ValueError("project already has a materially different QA result")
         if project.status is not ProjectStatus.QA:
             raise ValueError("QA evaluation requires project QA state")
+        expected = VerificationSubject(
+            "project_qa",
+            project_id,
+            task_id=task_id,
+            workflow_id=project.workflow_id,
+        )
+        authority = self._store._verification_authority
+        if authority is None or not authority.validate(evidence, expected):
+            raise ValueError("trusted QA verification evidence is invalid")
+        claimed_criteria = evidence.claims.get("criteria")
+        if claimed_criteria != tuple(item.criterion_id for item in criteria):
+            raise ValueError("QA evidence does not bind the supplied criteria")
         if any(item.passed is False for item in criteria):
             outcome = QACheckOutcome.FAIL
         elif any(item.passed is None for item in criteria):
@@ -712,7 +917,22 @@ class DeliveryCoordinator:
         project = self._store.get(project_id)
         if project.status not in {ProjectStatus.PROJECT_ACTIVE, ProjectStatus.DELIVERY}:
             return DeliveryRun(False, None, "project is not active for delivery")
-        admission_task_id = f"delivery:{project_id}:{request.request_id or self._id_factory()}"
+        stable_request_id = request.request_id or self._id_factory()
+        existing_operation = self._store.delivery_operation(project_id, stable_request_id)
+        if existing_operation is not None:
+            status = str(existing_operation["status"])
+            if status == "COMPLETED":
+                return DeliveryRun(
+                    False,
+                    None,
+                    f"delivery already completed as task {existing_operation['task_id']}",
+                )
+            return DeliveryRun(
+                False,
+                None,
+                "delivery outcome requires reconciliation; execution was not repeated",
+            )
+        admission_task_id = f"delivery:{project_id}:{stable_request_id}"
         task_reservation = f"task-slot:{admission_task_id}"
         task_admission = self._resources.reserve(
             task_reservation,
@@ -738,8 +958,23 @@ class DeliveryCoordinator:
         if agent_admission.outcome is not AdmissionOutcome.ADMITTED:
             self._resources.release(task_reservation, project.owner_agent_id)
             return DeliveryRun(False, None, "agent capacity is queued")
+        operation_id = f"delivery-operation:{project_id}:{stable_request_id}"
+        operation = self._store.begin_delivery_operation(
+            project_id, stable_request_id, workflow_id, operation_id
+        )
+        if operation["status"] != "RUNNING":
+            self._resources.release(agent_reservation, project.owner_agent_id)
+            self._resources.release(task_reservation, project.owner_agent_id)
+            return DeliveryRun(
+                False, None, "delivery operation could not be claimed for safe execution"
+            )
+        canonical_request = (
+            request
+            if request.request_id is not None and request.workflow_id == workflow_id
+            else replace(request, request_id=stable_request_id, workflow_id=workflow_id)
+        )
         try:
-            result = self._executive.handle(request)
+            result = self._executive.handle(canonical_request)
         finally:
             self._resources.release(agent_reservation, project.owner_agent_id)
             self._resources.release(task_reservation, project.owner_agent_id)
@@ -756,7 +991,7 @@ class DeliveryCoordinator:
             result.verification.verification_id,
             self._clock(),
         )
-        self._store.save_delivery_task(record)
+        self._store.complete_delivery_operation(operation_id, record, result)
         self._emit(project, record)
         return DeliveryRun(True, result, "delivery task executed through canonical Executive")
 
@@ -821,9 +1056,15 @@ class HandoffService:
         issues = tuple(validate_text(item, "outstanding issue") for item in outstanding_issues)
         existing = self._store.handoff(project_id)
         if existing is not None:
-            if existing.outstanding_issues == issues:
-                return existing
-            raise ValueError("project already has a handoff with different outstanding issues")
+            if existing.outstanding_issues != issues:
+                raise ValueError("project already has a handoff with different outstanding issues")
+            project = self._store.get(project_id)
+            if (
+                existing.completion is HandoffCompletion.VERIFIED_COMPLETE
+                and project.status is not ProjectStatus.COMPLETED
+            ):
+                self._store.complete_verified_handoff(existing, project)
+            return existing
         project = self._store.get(project_id)
         if project.status is not ProjectStatus.QA:
             raise ValueError("handoff requires project QA state")
@@ -859,7 +1100,10 @@ class HandoffService:
             completion,
             self._clock(),
         )
-        self._store.save_handoff(handoff)
+        if completion is HandoffCompletion.VERIFIED_COMPLETE:
+            self._store.complete_verified_handoff(handoff, project)
+        else:
+            self._store.save_handoff(handoff)
         if self._observer is not None:
             with suppress(Exception):
                 self._observer.record(
@@ -885,13 +1129,6 @@ class HandoffService:
                         "completion": completion.value,
                     },
                 )
-        if completion is HandoffCompletion.VERIFIED_COMPLETE:
-            handoff_state = self._store.transition(
-                project.project_id, project.revision, ProjectStatus.HANDOFF
-            )
-            self._store.transition(
-                project.project_id, handoff_state.revision, ProjectStatus.COMPLETED
-            )
         return handoff
 
 

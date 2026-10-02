@@ -13,6 +13,7 @@ from zyro.core.risk import RiskClass
 from zyro.domains.freelancing.delivery import ProjectRecord, QACriterion, QAService
 from zyro.domains.freelancing.outreach import OutreachPreparation
 from zyro.domains.freelancing.replies import DeterministicReplyProcessor
+from zyro.execution.evidence import TrustedVerificationEvidence
 
 OUTREACH_PREPARATION_AGENT_ID = "freelancing.outreach-preparation"
 REPLY_PROCESSING_AGENT_ID = "freelancing.reply-processing"
@@ -36,7 +37,7 @@ class ReplyInput:
 class QAInput:
     project_id: str
     criteria: tuple[QACriterion, ...]
-    verification_references: tuple[str, ...] = ()
+    evidence: TrustedVerificationEvidence
 
 
 OperationalValue: TypeAlias = OutreachPreparation | ReplyInput | ProjectRecord | QAInput
@@ -131,7 +132,7 @@ class QAAgent:
                 item.value.project_id,
                 context.task_id,
                 item.value.criteria,
-                item.value.verification_references,
+                item.value.evidence,
             )
         )
 

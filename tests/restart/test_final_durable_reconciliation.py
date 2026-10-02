@@ -4,7 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from tests.unit.test_freelancing_operations import NOW, project_setup, reply
+from tests.unit.test_freelancing_operations import (
+    NOW,
+    deliverable_evidence,
+    project_setup,
+    qa_evidence,
+    reply,
+)
 from zyro.core.executive import ExecutiveOutcome
 from zyro.domains.freelancing.delivery import (
     Deliverable,
@@ -29,7 +35,9 @@ def _complete_project(store: SQLiteProjectStore, project_id: str) -> tuple[QARes
     active = store.transition(project_id, project.revision, ProjectStatus.PROJECT_ACTIVE)
     delivery = store.transition(project_id, active.revision, ProjectStatus.DELIVERY)
     qa_state = store.transition(project_id, delivery.revision, ProjectStatus.QA)
-    store.verify_deliverable(project_id, qa_state.revision, "deliverable-1", "artifact-1")
+    store.verify_deliverable(
+        project_id, qa_state.revision, "deliverable-1", deliverable_evidence(store, project)
+    )
     task = DeliveryTaskRecord(
         project_id,
         project.workflow_id,
@@ -49,7 +57,7 @@ def _complete_project(store: SQLiteProjectStore, project_id: str) -> tuple[QARes
         project_id,
         "task-qa",
         (criterion,),
-        ("verification-delivery",),
+        qa_evidence(store, project, "task-qa", (criterion,)),
     )
     return qa, criterion
 
@@ -109,16 +117,21 @@ def test_qa_and_handoff_restart_are_idempotent_and_terminal_state_does_not_reviv
         project.project_id
     )
     assert handoff.completion is HandoffCompletion.VERIFIED_COMPLETE
+    authority = store._verification_authority
     store.close()
 
-    reopened = SQLiteProjectStore(tmp_path / "projects.sqlite", clock=lambda: NOW)
+    reopened = SQLiteProjectStore(
+        tmp_path / "projects.sqlite",
+        verification_authority=authority,
+        clock=lambda: NOW,
+    )
     repeated_qa = QAService(
         reopened, clock=lambda: NOW, id_factory=lambda: "different-qa-id"
     ).evaluate(
         project.project_id,
         "task-qa",
         (criterion,),
-        ("verification-delivery",),
+        qa_evidence(reopened, project, "task-qa", (criterion,)),
     )
     repeated_handoff = HandoffService(
         reopened, clock=lambda: NOW, id_factory=lambda: "different-handoff-id"
@@ -144,7 +157,7 @@ def test_conflicting_duplicate_qa_delivery_and_handoff_records_fail_closed(
             project.project_id,
             "different-task",
             (criterion,),
-            ("verification-delivery",),
+            qa_evidence(store, project, "different-task", (criterion,)),
         )
 
     original_task = store.delivery_task("task-delivery")

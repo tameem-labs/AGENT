@@ -27,6 +27,12 @@ from zyro.domains.freelancing.replies import (
     ReplyCategory,
     SQLiteReplyStore,
 )
+from zyro.execution import (
+    EvidenceResult,
+    TrustedVerificationEvidence,
+    VerificationAuthority,
+    VerificationSubject,
+)
 
 NOW = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
 
@@ -168,7 +174,17 @@ def project_setup(tmp_path: Path) -> tuple[SQLiteProjectStore, ProjectRecord]:
         clock=lambda: NOW,
         id_factory=lambda: "processing-1",
     ).process("reply-1", processing_task_id="processing-task")
-    project_store = SQLiteProjectStore(tmp_path / "projects.sqlite", clock=lambda: NOW)
+    verification_authority = VerificationAuthority(
+        "test-project-verifier",
+        b"project-test-verification-key-00001",
+        clock=lambda: NOW,
+        id_factory=lambda: "project-evidence",
+    )
+    project_store = SQLiteProjectStore(
+        tmp_path / "projects.sqlite",
+        verification_authority=verification_authority,
+        clock=lambda: NOW,
+    )
     project = OpportunityService(
         project_store,
         clock=lambda: NOW,
@@ -192,6 +208,50 @@ def project_setup(tmp_path: Path) -> tuple[SQLiteProjectStore, ProjectRecord]:
     return project_store, project
 
 
+def deliverable_evidence(
+    store: SQLiteProjectStore, project: ProjectRecord
+) -> TrustedVerificationEvidence:
+    authority = store._verification_authority
+    assert authority is not None
+    return authority.issue(
+        VerificationSubject(
+            "project_deliverable",
+            "deliverable-1",
+            task_id=project.task_id,
+            workflow_id=project.workflow_id,
+        ),
+        source="deterministic-artifact-inspector",
+        reference="artifact-1",
+        method="local-deterministic-inspection",
+        result=EvidenceResult.VERIFIED,
+        observed={"artifact_digest": "digest-1", "exists": True},
+    )
+
+
+def qa_evidence(
+    store: SQLiteProjectStore,
+    project: ProjectRecord,
+    task_id: str,
+    criteria: tuple[QACriterion, ...],
+) -> TrustedVerificationEvidence:
+    authority = store._verification_authority
+    assert authority is not None
+    return authority.issue(
+        VerificationSubject(
+            "project_qa",
+            project.project_id,
+            task_id=task_id,
+            workflow_id=project.workflow_id,
+        ),
+        source="deterministic-qa-verifier",
+        reference=f"qa:{project.project_id}:{task_id}",
+        method="local-deterministic-qa",
+        result=EvidenceResult.VERIFIED,
+        observed={"criteria": [item.criterion_id for item in criteria]},
+        claims={"criteria": tuple(item.criterion_id for item in criteria)},
+    )
+
+
 def test_project_state_is_compare_and_set_and_not_activated_by_client_text(
     tmp_path: Path,
 ) -> None:
@@ -210,17 +270,19 @@ def test_qa_failure_cannot_silently_complete_or_handoff(tmp_path: Path) -> None:
     active = store.transition(project.project_id, project.revision, ProjectStatus.PROJECT_ACTIVE)
     delivery = store.transition(active.project_id, active.revision, ProjectStatus.DELIVERY)
     qa_state = store.transition(delivery.project_id, delivery.revision, ProjectStatus.QA)
+    criteria = (
+        QACriterion(
+            "criterion-1",
+            "Deliverable matches requested scope",
+            False,
+            ("mismatch found",),
+        ),
+    )
     qa = QAService(store, clock=lambda: NOW, id_factory=lambda: "qa-1").evaluate(
         project.project_id,
         "qa-task",
-        (
-            QACriterion(
-                "criterion-1",
-                "Deliverable matches requested scope",
-                False,
-                ("mismatch found",),
-            ),
-        ),
+        criteria,
+        qa_evidence(store, project, "qa-task", criteria),
     )
 
     handoff = HandoffService(store, clock=lambda: NOW, id_factory=lambda: "handoff-1").create(
@@ -254,10 +316,12 @@ def test_unverified_delivery_is_never_reported_as_verified_handoff(tmp_path: Pat
             NOW,
         )
     )
+    criteria = (QACriterion("criterion-1", "Output exists", True, ("output reference",)),)
     QAService(store, clock=lambda: NOW, id_factory=lambda: "qa-1").evaluate(
         project.project_id,
         "qa-task",
-        (QACriterion("criterion-1", "Output exists", True, ("output reference",)),),
+        criteria,
+        qa_evidence(store, project, "qa-task", criteria),
     )
 
     handoff = HandoffService(store, clock=lambda: NOW, id_factory=lambda: "handoff-1").create(
@@ -278,7 +342,7 @@ def test_verified_delivery_qa_and_deliverable_allow_completed_handoff(tmp_path: 
         project.project_id,
         qa_state.revision,
         "deliverable-1",
-        "artifact-1",
+        deliverable_evidence(store, project),
     )
     store.save_delivery_task(
         DeliveryTaskRecord(
@@ -295,11 +359,12 @@ def test_verified_delivery_qa_and_deliverable_allow_completed_handoff(tmp_path: 
             NOW,
         )
     )
+    criteria = (QACriterion("criterion-1", "Output verified", True, ("verification-1",)),)
     QAService(store, clock=lambda: NOW, id_factory=lambda: "qa-1").evaluate(
         project.project_id,
         "qa-task",
-        (QACriterion("criterion-1", "Output verified", True, ("verification-1",)),),
-        ("verification-1",),
+        criteria,
+        qa_evidence(store, project, "qa-task", criteria),
     )
 
     handoff = HandoffService(store, clock=lambda: NOW, id_factory=lambda: "handoff-1").create(

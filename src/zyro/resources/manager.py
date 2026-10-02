@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import sqlite3
+from _thread import RLock
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from functools import wraps
 from pathlib import Path
-from typing import cast
+from typing import Any, TypeVar, cast
 
 from zyro.core.data import validate_text
 from zyro.resources.contracts import (
@@ -28,6 +30,18 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+_ResultT = TypeVar("_ResultT")
+
+
+def _serialized(method: Callable[..., _ResultT]) -> Callable[..., _ResultT]:
+    @wraps(method)
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> _ResultT:
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 class ResourceManagerError(RuntimeError):
     pass
 
@@ -45,8 +59,9 @@ class SQLiteResourceManager:
         self.path = Path(path)
         self.policy = policy or ResourcePolicy()
         self._clock = clock
+        self._lock = RLock()
         try:
-            self._connection = sqlite3.connect(self.path)
+            self._connection = sqlite3.connect(self.path, check_same_thread=False)
             self._connection.row_factory = sqlite3.Row
             self._connection.execute("PRAGMA journal_mode=WAL")
             self._connection.executescript(
@@ -112,9 +127,11 @@ class SQLiteResourceManager:
         except sqlite3.Error as error:
             raise ResourceManagerError("unable to initialize resource manager") from error
 
+    @_serialized
     def close(self) -> None:
         self._connection.close()
 
+    @_serialized
     def reserve(
         self,
         reservation_id: str,
@@ -193,6 +210,7 @@ class SQLiteResourceManager:
         )
         return AdmissionResult(outcome, reservation, limit)
 
+    @_serialized
     def renew(
         self, reservation_id: str, owner_id: str, lease_seconds: float | None = None
     ) -> ResourceReservation:
@@ -212,6 +230,7 @@ class SQLiteResourceManager:
             )
         return self._reservation(self._row_required(reservation_id))
 
+    @_serialized
     def release(self, reservation_id: str, owner_id: str) -> ResourceReservation:
         row = self._row_required(reservation_id)
         reservation = self._reservation(row)
@@ -231,6 +250,7 @@ class SQLiteResourceManager:
         self._promote(reservation.resource_kind, reservation.resource_id)
         return self._reservation(self._row_required(reservation_id))
 
+    @_serialized
     def reconcile_leases(self) -> int:
         now = self._clock()
         rows = self._connection.execute(
@@ -251,9 +271,11 @@ class SQLiteResourceManager:
             self._promote(ResourceKind(row["resource_kind"]), row["resource_id"])
         return cursor.rowcount
 
+    @_serialized
     def reservation(self, reservation_id: str) -> ResourceReservation:
         return self._reservation(self._row_required(reservation_id))
 
+    @_serialized
     def consume_tokens(
         self,
         task_id: str,
@@ -359,6 +381,7 @@ class SQLiteResourceManager:
             else max(0, selected_workflow_limit - workflow_used - units),
         )
 
+    @_serialized
     def check_rate_limit(self, request_id: str, resource_id: str) -> RateLimitResult:
         validate_text(request_id, "request_id")
         validate_text(resource_id, "resource_id")
@@ -404,6 +427,7 @@ class SQLiteResourceManager:
         ).fetchone()["count"]
         return RateLimitResult(True, resource_id, policy.max_requests, used)
 
+    @_serialized
     def hard_stop_count(self, task_id: str) -> int:
         row = self._connection.execute(
             "SELECT COUNT(*) AS count FROM resource_hard_stops WHERE task_id=?", (task_id,)

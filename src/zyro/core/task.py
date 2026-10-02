@@ -95,6 +95,7 @@ class Task:
     max_attempts: int = 1
     resource_budget: dict[str, int] = field(default_factory=dict)
     verification_plan: str | None = None
+    workflow_id: str | None = None
     status: TaskStatus = field(default=TaskStatus.PENDING, init=False)
     pending_approval_id: str | None = field(default=None, init=False)
     attempt_count: int = field(default=0, init=False)
@@ -126,6 +127,8 @@ class Task:
                 self.verification_plan = validate_text(
                     self.verification_plan, "verification_plan", max_chars=4_096
                 )
+            if self.workflow_id is not None:
+                self.workflow_id = validate_text(self.workflow_id, "workflow_id", max_chars=512)
             if len(self.resource_budget) > 64:
                 raise ValueError("resource budget exceeds its bounded size")
             self.resource_budget = {

@@ -207,6 +207,7 @@ class ModelRequest:
     correlation_id: str
     system_instruction: str | None = None
     structured_output_schema: Mapping[str, Any] | None = None
+    workflow_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.structured_output_schema is not None:
@@ -230,6 +231,8 @@ class ModelRequest:
                 return f"{field_name} must be a non-empty string"
         if self.system_instruction is not None and not self.system_instruction.strip():
             return "system_instruction must be non-empty when supplied"
+        if self.workflow_id is not None and not self.workflow_id.strip():
+            return "workflow_id must be non-empty when supplied"
         return None
 
 

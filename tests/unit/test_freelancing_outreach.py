@@ -23,6 +23,12 @@ from zyro.domains.freelancing.outreach import (
     SQLiteOutreachStore,
     outreach_tool_definition,
 )
+from zyro.execution import (
+    EvidenceResult,
+    TrustedVerificationEvidence,
+    VerificationAuthority,
+    VerificationSubject,
+)
 from zyro.recovery import RecoveryAction, RecoveryPolicy
 from zyro.resources import RateLimitPolicy, ResourcePolicy, SQLiteResourceManager
 from zyro.security.approval import ApprovalService, ApprovalState
@@ -194,14 +200,42 @@ def system(
     registry.register(outreach_tool_definition(), handler)
     publisher = InProcessEventPublisher()
     event_ids = count(1)
+    verification_authority = VerificationAuthority(
+        "test-outreach-verifier",
+        b"outreach-test-verification-key-0001",
+        clock=actual_clock,
+        id_factory=lambda: "outreach-evidence-1",
+    )
     service = OutreachService(
         store,
         ToolExecutor(registry, authorizer),
         publisher,
+        verification_authority=verification_authority,
         clock=actual_clock,
         id_factory=lambda: f"event-{next(event_ids)}",
     )
     return service, approvals, permissions, store, resources, actual_adapter, publisher
+
+
+def outreach_evidence(
+    service: OutreachService, item: OutreachPreparation, reference: str
+) -> TrustedVerificationEvidence:
+    authority = service._verification_authority
+    assert authority is not None
+    return authority.issue(
+        VerificationSubject(
+            "outreach_delivery",
+            item.external_action_id,
+            action_id=item.external_action_id,
+            task_id=item.task_id,
+            workflow_id=item.workflow_id,
+        ),
+        source="test-provider-reconciliation",
+        reference=reference,
+        method="deterministic-test-reconciliation",
+        result=EvidenceResult.VERIFIED,
+        observed={"delivered": True, "external_action_id": item.external_action_id},
+    )
 
 
 def test_outreach_preparation_is_strict_exact_and_secret_safe() -> None:
@@ -266,7 +300,9 @@ def test_approved_exact_message_dispatches_once_and_simulation_never_verifies(
         instance_id="i-1",
         approval_id=pending.approval_id,
     )
-    verified = service.verify_delivery(item.external_action_id, verification_reference="receipt")
+    verified = service.verify_delivery(
+        item.external_action_id, evidence=outreach_evidence(service, item, "receipt")
+    )
 
     assert first.status is OutreachStatus.ACCEPTED
     assert duplicate.status is OutreachStatus.ACCEPTED
@@ -292,7 +328,8 @@ def test_real_adapter_delivery_remains_distinct_until_separately_verified(tmp_pa
         approval_id=pending.approval_id,
     )
     verified = service.verify_delivery(
-        item.external_action_id, verification_reference="independent-receipt-1"
+        item.external_action_id,
+        evidence=outreach_evidence(service, item, "independent-receipt-1"),
     )
 
     assert delivered.status is OutreachStatus.DELIVERED

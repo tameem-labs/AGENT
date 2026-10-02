@@ -2,13 +2,18 @@
 
 ## Purpose
 
-ZYRO is designed as one canonical personal Executive backed by replaceable models, bounded tools, explicit orchestration, distinct memory/state/knowledge layers, policy-controlled execution, and independent verification. Current code implements and locally hardens the Executive/Task/Agent runtime, model/tool routing, scoped authorization and approval, durable communication, Memory/State/Knowledge/Context, Recovery/Observability/Resources, and a bounded Freelancing loop from qualification through exact-message outreach, reply intake, project delivery, QA, and handoff. Final integration includes architecture, authority, adversarial, restart, success-E2E, and failure-E2E checks. Real credentialed providers, formal database migrations, authenticated production authority, and deployment operations remain partial, adapters, or future work; version 1.0 readiness is not claimed.
+ZYRO is designed as one canonical personal Executive backed by replaceable models, bounded tools, explicit orchestration, distinct memory/state/knowledge layers, policy-controlled execution, and independent verification. Current code implements a runnable authenticated localhost product over the Executive/Task/Agent runtime, durable Workflow system, model/tool routing, scoped authorization and approval, trusted verifier evidence, Resource-enforced local execution, provider-neutral encrypted integrations/OAuth, durable communication, Memory/State/Knowledge/Context, Recovery/Observability, and a bounded Freelancing loop. The responsive UI uses the canonical Application/API boundary and never duplicates business authority. Real credentialed providers and production deployment operations remain not configured; version 1.0 readiness is not claimed.
 
 ## Repository structure
 
 | Path | Responsibility |
 | --- | --- |
 | `src/zyro/` | Installable Python package and implementation source |
+| `src/zyro/api/` | Authenticated FastAPI boundary plus built responsive local frontend assets |
+| `src/zyro/application/` | Canonical product composition, chat/Task projections, and UI-independent service |
+| `src/zyro/workflows/` | Minimal durable DAG Workflow state, controls, execution, history, and local triggers |
+| `src/zyro/integrations/` | Provider-neutral OAuth, connections, accounts, scopes, health, and encrypted credentials |
+| `src/zyro/persistence/` | Forward-only migration, integrity, and backup primitives |
 | `src/zyro/core/` | Canonical Executive, Task lifecycle, errors/risk/verification contracts, Event envelope and compatibility publisher, configuration, and logging |
 | `src/zyro/communication/` | Authorized Direct Messages plus SQLite Event persistence, subscriber delivery, ACK/retry/order/dead-letter state, and recovery |
 | `src/zyro/memory/` | Scoped historical assertions, provenance, retention, correction/contradiction, forgetting, privacy, and bounded retrieval |

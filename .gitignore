@@ -30,3 +30,7 @@ config/*.local.toml
 .vscode/
 .DS_Store
 Thumbs.db
+
+# ZYRO local runtime data
+.zyro/
+backups/

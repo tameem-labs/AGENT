@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from queue import Empty, Queue
+from threading import Thread
 from typing import Any
 
 from zyro.core.errors import ErrorInfo
@@ -18,7 +20,7 @@ from zyro.tools.contracts import (
     ToolResultStatus,
 )
 from zyro.tools.errors import MissingToolError
-from zyro.tools.registry import ToolRegistry
+from zyro.tools.registry import RegisteredTool, ToolRegistry
 
 
 class ToolExecutor:
@@ -99,6 +101,35 @@ class ToolExecutor:
                 authorization.error,
                 authorization,
             )
+        if authorization.dispatch_grant_id is not None:
+            grants = getattr(self._authorizer, "dispatch_grants", None)
+            if grants is None or authorization.action_fingerprint is None:
+                return self._failure(
+                    call,
+                    ToolResultStatus.AUTHORIZATION_REQUIRED,
+                    ErrorInfo(
+                        "dispatch_grant_unavailable",
+                        "Bounded dispatch authority could not be claimed.",
+                        "AuthorizationBoundaryError",
+                    ),
+                    authorization,
+                )
+            try:
+                grants.claim(
+                    authorization.dispatch_grant_id,
+                    authorization.action_fingerprint,
+                )
+            except Exception:
+                return self._failure(
+                    call,
+                    ToolResultStatus.AUTHORIZATION_REQUIRED,
+                    ErrorInfo(
+                        "dispatch_grant_invalid",
+                        "Authority changed before dispatch; execution was blocked.",
+                        "AuthorizationBoundaryError",
+                    ),
+                    authorization,
+                )
 
         logger = get_logger(
             "tool_executor",
@@ -120,7 +151,12 @@ class ToolExecutor:
         )
         logger.info("authorized bounded tool execution started")
         try:
-            handler_result = registered.handler.execute(context, call.arguments)
+            handler_result = self._execute_handler(
+                registered,
+                context,
+                call.arguments,
+                definition.timeout_seconds,
+            )
         except TimeoutError:
             logger.warning("tool execution timed out")
             return self._failure(
@@ -205,6 +241,44 @@ class ToolExecutor:
             approval_id=authorization.approval_id,
             policy_version=authorization.policy_version,
         )
+
+    @staticmethod
+    def _execute_handler(
+        registered: RegisteredTool,
+        context: ToolExecutionContext,
+        arguments: Mapping[str, Any],
+        timeout_seconds: float | None,
+    ) -> ToolHandlerResult:
+        def invoke() -> ToolHandlerResult:
+            # Canonical call shape: registered.handler.execute(context, call.arguments)
+            return registered.handler.execute(context, arguments)
+
+        if timeout_seconds is None:
+            return invoke()
+        outcomes: Queue[ToolHandlerResult | BaseException] = Queue(maxsize=1)
+
+        def capture() -> None:
+            try:
+                outcomes.put(invoke())
+            except BaseException as error:
+                outcomes.put(error)
+
+        thread = Thread(target=capture, daemon=True, name=f"zyro-tool-{context.tool_id}")
+        thread.start()
+        try:
+            outcome = outcomes.get(timeout=timeout_seconds)
+        except Empty:
+            return ToolHandlerResult.unknown_outcome(
+                ErrorInfo(
+                    "tool_timeout_outcome_unknown",
+                    "Configured timeout elapsed; the blocking handler could not be "
+                    "forcibly stopped.",
+                    "ExternalSideEffectUncertainty",
+                )
+            )
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
 
     def _malformed(
         self,

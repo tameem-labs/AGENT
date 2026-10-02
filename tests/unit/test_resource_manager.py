@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -85,6 +86,24 @@ def test_token_accounting_hard_stop_and_restart_persistence(tmp_path: Path) -> N
     assert still_stopped.task_used == 8
     assert reopened.hard_stop_count("task-1") == 2
     reopened.close()
+
+
+def test_concurrent_token_consumption_cannot_overrun_hard_limit(tmp_path: Path) -> None:
+    manager = SQLiteResourceManager(
+        tmp_path / "concurrent.sqlite",
+        ResourcePolicy(task_token_limit=10, workflow_token_limit=10),
+        clock=lambda: NOW,
+    )
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(
+            pool.map(
+                lambda _: manager.consume_tokens("task-1", "workflow-1", 1, UsagePrecision.EXACT),
+                range(20),
+            )
+        )
+    assert sum(result.outcome is ConsumptionOutcome.ACCEPTED for result in results) == 10
+    assert max(result.task_used for result in results) == 10
+    manager.close()
 
 
 def test_workflow_limit_is_independent_across_tasks(tmp_path: Path) -> None:

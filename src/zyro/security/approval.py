@@ -311,6 +311,10 @@ class ApprovalService:
         self._requests[request.approval_id] = request
         return request
 
+    def requests(self) -> tuple[ApprovalRequest, ...]:
+        """Return canonical requests for authenticated application projections."""
+        return tuple(sorted(self._requests.values(), key=lambda item: item.requested_at))
+
     def get(self, approval_id: str) -> ApprovalRequest:
         try:
             return self._requests[approval_id]

@@ -8,7 +8,12 @@ from pathlib import Path
 from tests.integration.test_freelancing_delivery_runtime import DeliveryHandler
 from tests.integration.test_freelancing_pipeline import pipeline
 from tests.unit.test_freelancing_evaluation import found_lead
-from tests.unit.test_freelancing_outreach import DeliveredAdapter, preparation, system
+from tests.unit.test_freelancing_outreach import (
+    DeliveredAdapter,
+    outreach_evidence,
+    preparation,
+    system,
+)
 from zyro.agents.definition import AgentDefinition
 from zyro.agents.registry import AgentRegistry
 from zyro.core.events import InProcessEventPublisher
@@ -33,6 +38,7 @@ from zyro.domains.freelancing.replies import (
     DeterministicReplyProcessor,
     SQLiteReplyStore,
 )
+from zyro.execution import EvidenceResult, VerificationAuthority, VerificationSubject
 from zyro.execution.verification import StructuralRuntimeVerifier
 from zyro.observability import OperationalObserver, SQLiteObservabilityStore, TraceQuery
 from zyro.resources import (
@@ -87,7 +93,7 @@ def test_qualified_lead_to_approved_outreach_reply_delivery_qa_handoff(
     assert not dispatched.simulated
     verified_outreach = outreach.verify_delivery(
         prepared.external_action_id,
-        verification_reference="independent-outreach-evidence",
+        evidence=outreach_evidence(outreach, prepared, "independent-outreach-evidence"),
     )
     assert verified_outreach.status is OutreachStatus.VERIFIED
     assert adapter.calls == [prepared.external_action_id]
@@ -126,7 +132,16 @@ def test_qualified_lead_to_approved_outreach_reply_delivery_qa_handoff(
     ).process(inbound.reply_id, processing_task_id="task-processing")
     assert processed.creates_potential_project
 
-    project_store = SQLiteProjectStore(tmp_path / "e2e-project.sqlite", clock=lambda: NOW)
+    project_verifier = VerificationAuthority(
+        "e2e-project-verifier",
+        b"e2e-project-verification-key-00001",
+        clock=lambda: NOW,
+    )
+    project_store = SQLiteProjectStore(
+        tmp_path / "e2e-project.sqlite",
+        verification_authority=project_verifier,
+        clock=lambda: NOW,
+    )
     project = OpportunityService(
         project_store,
         observer=observer,
@@ -202,9 +217,22 @@ def test_qualified_lead_to_approved_outreach_reply_delivery_qa_handoff(
         project.project_id,
         delivering.revision,
         "deliverable-e2e",
-        "artifact-e2e",
+        project_verifier.issue(
+            VerificationSubject(
+                "project_deliverable",
+                "deliverable-e2e",
+                task_id=project.task_id,
+                workflow_id=project.workflow_id,
+            ),
+            source="e2e-artifact-inspector",
+            reference="artifact-e2e",
+            method="deterministic-e2e-inspection",
+            result=EvidenceResult.VERIFIED,
+            observed={"artifact": "artifact-e2e", "exists": True},
+        ),
     )
     project_store.transition(project.project_id, verified.revision, ProjectStatus.QA)
+    qa_criteria = (QACriterion("scope", "Deliverable matches scope", True, ("artifact-e2e",)),)
     qa = QAService(
         project_store,
         observer=observer,
@@ -213,8 +241,21 @@ def test_qualified_lead_to_approved_outreach_reply_delivery_qa_handoff(
     ).evaluate(
         project.project_id,
         "task-qa",
-        (QACriterion("scope", "Deliverable matches scope", True, ("artifact-e2e",)),),
-        (run.result.verification.verification_id or "",),
+        qa_criteria,
+        project_verifier.issue(
+            VerificationSubject(
+                "project_qa",
+                project.project_id,
+                task_id="task-qa",
+                workflow_id=project.workflow_id,
+            ),
+            source="e2e-qa-verifier",
+            reference="qa-e2e-evidence",
+            method="deterministic-e2e-qa",
+            result=EvidenceResult.VERIFIED,
+            observed={"criteria": ["scope"]},
+            claims={"criteria": ("scope",)},
+        ),
     )
     assert qa.outcome.value == "PASS"
     handoff = HandoffService(
@@ -262,7 +303,7 @@ def test_qualified_lead_to_approved_outreach_reply_delivery_qa_handoff(
         "HANDOFF_RECORDED",
     }
     assert any(trace.approval_id == pending.approval_id for trace in traces)
-    assert any(trace.verification_id == "independent-outreach-evidence" for trace in traces)
+    assert any(trace.verification_id == "outreach-evidence-1" for trace in traces)
     assert any(trace.verification_id == run.result.verification.verification_id for trace in traces)
     outreach_store.close()
     outreach_resources.close()

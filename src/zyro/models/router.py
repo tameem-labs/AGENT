@@ -19,8 +19,21 @@ from zyro.models.contracts import (
     RoutingStatus,
 )
 from zyro.models.errors import MissingProviderError
-from zyro.models.provider import ProviderRegistry
+from zyro.models.provider import ModelProvider, ProviderRegistry
 from zyro.models.registry import ModelRegistry
+
+
+def build_model_router(
+    models: tuple[ModelDefinition, ...], providers: tuple[ModelProvider, ...]
+) -> ModelRouter:
+    """Composition helper retaining provider-registry ownership inside the router module."""
+    model_registry = ModelRegistry()
+    for model in models:
+        model_registry.register(model)
+    provider_registry = ProviderRegistry()
+    for provider in providers:
+        provider_registry.register(provider)
+    return ModelRouter(model_registry, provider_registry)
 
 
 class ModelRouter:
