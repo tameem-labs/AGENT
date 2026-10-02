@@ -12,7 +12,7 @@ ZYRO is designed as one canonical personal Executive backed by replaceable model
 | `src/zyro/api/` | Authenticated FastAPI boundary plus responsive local frontend, first-run setup, browser-native voice, and canonical Organization projection |
 | `src/zyro/application/` | Canonical product composition, chat/Task projections, and UI-independent service |
 | `src/zyro/workflows/` | Minimal durable DAG Workflow state, controls, execution, history, and local triggers |
-| `src/zyro/integrations/` | Provider-neutral OAuth, connections, accounts, scopes, health, and encrypted credentials |
+| `src/zyro/integrations/` | Configurable official Google/GitHub/Instagram OAuth, connections/accounts, encrypted credentials, token refresh/revoke, scope enforcement, and bounded provider reads |
 | `src/zyro/persistence/` | Forward-only migration, integrity, and backup primitives |
 | `src/zyro/core/` | Canonical Executive, Task lifecycle, errors/risk/verification contracts, Event envelope and compatibility publisher, configuration, and logging |
 | `src/zyro/communication/` | Authorized Direct Messages plus SQLite Event persistence, subscriber delivery, ACK/retry/order/dead-letter state, and recovery |
@@ -22,7 +22,8 @@ ZYRO is designed as one canonical personal Executive backed by replaceable model
 | `src/zyro/context/` | Transient permission-filtered source selection, precedence, deduplication, provenance, and context budgets |
 | `src/zyro/recovery/` | Structured failures, deterministic recovery policy, durable operation/decision reconciliation, canonical Task retry adapter, and recovery events |
 | `src/zyro/observability/` | Durable bounded redacted execution traces, indexed queries, and fail-open runtime/model/tool observation adapters |
-| `src/zyro/resources/` | Configurable token/concurrency/rate controls, fair queues, expiring leases, durable usage/hard stops, and narrow Recovery integration |
+| `src/zyro/research/` | Brave Search Tool, SSRF-safe source reader, provenance, and canonical Research Agent synthesis |
+| `src/zyro/resources/` | Model token accounting and Tool concurrency admission, fair queues, expiring leases, durable usage/hard stops, and Recovery integration |
 | `src/zyro/agents/` | Agent Definition, Agent Instance, bounded handler contract, and in-process registry |
 | `src/zyro/runtime/` | Process bootstrap plus Agent Runtime with narrow model/tool invocation boundaries |
 | `src/zyro/models/` | Provider-independent definitions, requirements, results, registries, deterministic router, bounded fallback, and encrypted-key Gemini REST adapter |

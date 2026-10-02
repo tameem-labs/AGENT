@@ -1,6 +1,6 @@
 # Production-readiness assessment
 
-Assessment date: 2026-10-02. Package version: 0.13.0.
+Assessment date: 2026-10-02. Package version: 0.14.0.
 
 This matrix reports demonstrated behavior. A passing local test does not imply that an unconfigured external provider exists.
 
@@ -20,11 +20,12 @@ This matrix reports demonstrated behavior. A passing local test does not imply t
 | Event Bus | IMPLEMENTED | Durable local at-least-once delivery, ACK identity, finite retry, ordering key and dead letters | No exactly-once execution, global ordering, or external broker |
 | Memory/State/Knowledge/Context | IMPLEMENTED | Separate scoped stores and transient permission-filtered Context | Lexical local behavior; no semantic/vector service |
 | Observability/Activity | PARTIAL | Bounded redacted traces and durable Workflow history exposed through API/UI | No exporter, alerts, metrics backend, or distributed tracing |
-| Integration Center | IMPLEMENTED | Definitions, multiple account connections, scopes, health, server-side OAuth/PKCE, callback, revoke | Real provider clients are not configured |
+| Integration Center | IMPLEMENTED | UI-encrypted Google/GitHub/Instagram client configuration, official OAuth endpoints, multiple accounts, scopes, health, state/PKCE, callback, refresh, disconnect/revoke | No credentials/accounts bundled; live flows require provider developer setup |
+| External research | IMPLEMENTED | Registered Research Agent, official Brave search, SSRF-safe source reading, provenance digests/timestamps, Resource-admitted tools, Gemini synthesis | Requires a Brave key and network; semantic truth remains uncertain and source-bounded |
 | Credential storage | IMPLEMENTED | AES-GCM vault and mode-0600 local key; refresh tokens never returned to frontend | No OS keychain/HSM integration or key rotation workflow |
-| Google/Gmail/Drive/Calendar | NOT CONFIGURED | Definition and scope display only | Requires reviewed backend OAuth provider configuration and bounded tools |
-| GitHub | NOT CONFIGURED | Definition and scope display only | Requires reviewed backend OAuth provider configuration and bounded tools |
-| Instagram | NOT CONFIGURED | Definition and scope display only | Requires reviewed backend OAuth provider configuration and bounded tools |
+| Google/Gmail/Drive/Calendar | PARTIAL | Official configurable OAuth plus scope-checked Gmail/Drive/Calendar read operations | No credentials bundled; consequential write tools remain blocked pending canonical Approval/verification composition |
+| GitHub | PARTIAL | Official configurable OAuth plus bounded repository/file/branch/commit/issue/PR/status reads | No credentials bundled; mutation is not exposed |
+| Instagram | PARTIAL | Official configurable OAuth and Graph profile/media reads | Requires Meta approval/configuration; no publishing/messaging or unofficial API |
 | Development OAuth | SIMULATED | Safe state/PKCE/connect/disconnect test flow | Not an external account or production provider |
 | External outreach | ADAPTER ONLY | Exact payload, Approval, dispatch grant, durable identity, uncertainty and verifier evidence | No credentialed email/CRM adapter |
 | Freelancing delivery/QA/Handoff | IMPLEMENTED | Durable delivery operation, signed deliverable/QA evidence, atomic verified Handoff completion | No artifact repository or domain-specific external verifier |
@@ -35,4 +36,4 @@ This matrix reports demonstrated behavior. A passing local test does not imply t
 
 ## 1.0 readiness decision
 
-**NOT MET.** Version 0.13.0 is a usable local product. Production readiness still requires durable authenticated Permission/Approval composition, provider-specific OAuth and execution adapters, external verification, complete per-store migration registration, key rotation/backup operations, multi-process qualification, and deployment/security operations.
+**NOT MET.** Version 0.14.0 is a usable local product. Production readiness still requires durable authenticated Permission/Approval composition, provider-specific OAuth and execution adapters, external verification, complete per-store migration registration, key rotation/backup operations, multi-process qualification, and deployment/security operations.

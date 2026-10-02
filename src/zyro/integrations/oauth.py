@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import cast
 from urllib.parse import urlencode
@@ -55,7 +55,12 @@ class IntegrationService:
         self._providers = dict(providers or {})
 
     def definitions(self) -> tuple[IntegrationDefinition, ...]:
-        return tuple(sorted(self._definitions.values(), key=lambda item: item.integration_id))
+        values = []
+        for item in self._definitions.values():
+            provider = self._providers.get(item.provider)
+            configured = bool(provider is not None and getattr(provider, "configured", True))
+            values.append(replace(item, oauth_configured=configured))
+        return tuple(sorted(values, key=lambda item: item.integration_id))
 
     def connections(self) -> tuple[IntegrationConnection, ...]:
         return self._store.list_connections()
@@ -69,7 +74,7 @@ class IntegrationService:
     ) -> OAuthStart:
         definition = self._definition(integration_id)
         provider = self._providers.get(definition.provider)
-        if not definition.oauth_configured or provider is None:
+        if provider is None or not getattr(provider, "configured", True):
             raise ValueError("integration OAuth provider is not configured")
         if not scopes or set(scopes) - set(definition.available_scopes):
             raise ValueError("requested OAuth scopes are empty or unsupported")
@@ -114,6 +119,15 @@ class IntegrationService:
         requested_scopes = tuple(str(item) for item in cast(tuple[object, ...], saved["scopes"]))
         if set(token.scopes) - set(requested_scopes):
             raise ValueError("provider returned scopes outside the initiated grant")
+        if not token.scopes:
+            token = OAuthTokenSet(
+                token.access_token,
+                token.refresh_token,
+                token.expires_at,
+                requested_scopes,
+                token.provider_account_id,
+                token.account_label,
+            )
         now = _now()
         existing = next(
             (
@@ -149,11 +163,35 @@ class IntegrationService:
         return self._store.disconnect(connection_id)
 
     def credential_for_tool(self, connection_id: str) -> OAuthTokenSet:
-        """Backend-only credential access; never serialize this result to the frontend."""
+        """Backend-only credential access; refresh tokens never cross this boundary."""
         connection = self._store.connection(connection_id)
         if connection.status is not IntegrationStatus.CONNECTED:
             raise ValueError("integration is not connected")
-        return self._store.token(connection_id)
+        token = self._store.token(connection_id)
+        if token.expires_at is not None and token.expires_at <= _now() + timedelta(seconds=30):
+            definition = self._definition(connection.integration_id)
+            provider = self._providers.get(definition.provider)
+            refresh = getattr(provider, "refresh", None)
+            if refresh is None:
+                raise ValueError("integration requires reauthentication")
+            token = refresh(token)
+            now = _now()
+            self._store.save_connection(
+                IntegrationConnection(
+                    connection.connection_id,
+                    connection.integration_id,
+                    connection.provider_account_id,
+                    connection.account_label,
+                    connection.scopes,
+                    IntegrationStatus.CONNECTED,
+                    connection.connected_at,
+                    now,
+                    now,
+                    "Credential refreshed",
+                ),
+                token,
+            )
+        return token
 
     def _definition(self, integration_id: str) -> IntegrationDefinition:
         try:

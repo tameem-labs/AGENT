@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from zyro.core.errors import ErrorInfo
 from zyro.models.contracts import ModelInvoker, ModelRequest, ModelResult, ModelResultStatus
-from zyro.resources.contracts import ConsumptionOutcome, UsagePrecision
+from zyro.resources.contracts import (
+    AdmissionOutcome,
+    ConsumptionOutcome,
+    ResourceKind,
+    UsagePrecision,
+    WorkLane,
+)
 from zyro.resources.manager import SQLiteResourceManager
+from zyro.tools.contracts import ToolCall, ToolInvoker, ToolResult, ToolResultStatus
 
 
 class ResourceAwareModelInvoker:
@@ -76,4 +85,45 @@ class ResourceAwareModelInvoker:
         )
 
 
-__all__ = ["ResourceAwareModelInvoker"]
+class ResourceAwareToolInvoker:
+    """Admit every canonical Tool execution through a bounded concurrency lease."""
+
+    def __init__(self, delegate: ToolInvoker, resources: SQLiteResourceManager) -> None:
+        self._delegate = delegate
+        self._resources = resources
+
+    def execute(self, call: ToolCall) -> ToolResult:
+        reservation_id = f"tool-{call.task_id}-{uuid4()}"
+        admitted = self._resources.reserve(
+            reservation_id,
+            call.agent_id,
+            ResourceKind.TOOL_CALL,
+            call.tool_id,
+            WorkLane.INTERACTIVE,
+            call.task_id,
+            call.workflow_id,
+            queue_if_unavailable=False,
+        )
+        if admitted.outcome is not AdmissionOutcome.ADMITTED:
+            return ToolResult(
+                ToolResultStatus.EXECUTION_FAILURE,
+                call.tool_id,
+                call.request_id,
+                call.task_id,
+                call.agent_id,
+                call.instance_id,
+                call.correlation_id,
+                error=ErrorInfo(
+                    "tool_resource_exhausted",
+                    "Tool execution was blocked by the Resource Manager.",
+                    "ResourceExhaustion",
+                    True,
+                ),
+            )
+        try:
+            return self._delegate.execute(call)
+        finally:
+            self._resources.release(reservation_id, call.agent_id)
+
+
+__all__ = ["ResourceAwareModelInvoker", "ResourceAwareToolInvoker"]

@@ -25,3 +25,7 @@ Tools cannot grant permission or secretly select models.
 
 ## Model Router
 Agents request capabilities, not providers. Router evaluates task type, complexity, risk, latency, cost, context, modality, privacy, tool calling, reliability and availability.
+
+## External research evidence
+
+The registered Research Agent executes canonical Tools rather than treating model output as external access. Search and source-read results retain provider/source, URL, digest, and retrieval time. These records establish provenance, not semantic truth. Structural Task verification does not silently convert source content into EXTERNAL trusted evidence; signed verifier-specific evidence remains required for external completion claims.

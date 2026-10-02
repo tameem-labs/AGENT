@@ -61,7 +61,9 @@ def test_authenticated_ui_api_runs_real_executive_workflow_and_resource_path(
         organization = client.get("/api/organization").json()
         assert organization["executive"]["agent_id"] == "zyro.executive"
         assert organization["departments"][0]["status"] == "ACTIVE"
-        assert all(item["status"] == "PLANNED" for item in organization["departments"][1:])
+        assert organization["departments"][1]["department_id"] == "research"
+        assert organization["departments"][1]["status"] == "ACTIVE"
+        assert all(item["status"] == "PLANNED" for item in organization["departments"][2:])
         assert len(tasks) == len(workflows) == 1
         assert tasks[0]["workflow_id"] == workflows[0]["workflow_id"]
 

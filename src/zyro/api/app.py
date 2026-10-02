@@ -16,11 +16,13 @@ from pydantic import BaseModel, Field
 
 from zyro.application import ZyroApplication
 from zyro.integrations import (
+    ConnectedAccountActions,
     DevelopmentOAuthProvider,
     EncryptedCredentialStore,
     IntegrationDefinition,
     IntegrationService,
     OAuthProvider,
+    build_official_oauth_providers,
 )
 from zyro.models.gemini import (
     DEFAULT_GEMINI_MODEL,
@@ -28,8 +30,10 @@ from zyro.models.gemini import (
     GeminiProvider,
     GeminiTransport,
 )
+from zyro.research import BRAVE_API_KEY_SECRET, BraveSearchHandler
 from zyro.security.approval import ApprovalError, ApprovalService, ApprovalState
 from zyro.security.identity import AuthenticatedPrincipal, LocalIdentityStore
+from zyro.tools.contracts import ToolExecutionContext
 
 
 class SetupBody(BaseModel):
@@ -63,6 +67,15 @@ class SetupCompletionBody(BaseModel):
     use_local_fallback: bool = False
 
 
+class ResearchConfigurationBody(BaseModel):
+    api_key: str = Field(min_length=16, max_length=512)
+
+
+class OAuthProviderConfigurationBody(BaseModel):
+    client_id: str = Field(min_length=3, max_length=512)
+    client_secret: str = Field(min_length=8, max_length=2048)
+
+
 class RuntimeContainer:
     def __init__(self, data_dir: Path, gemini_transport: GeminiTransport | None = None) -> None:
         self.data_dir = data_dir
@@ -82,8 +95,11 @@ class RuntimeContainer:
                 (
                     "openid",
                     "email",
+                    "https://www.googleapis.com/auth/gmail.readonly",
                     "https://www.googleapis.com/auth/gmail.send",
+                    "https://www.googleapis.com/auth/drive.metadata.readonly",
                     "https://www.googleapis.com/auth/drive.file",
+                    "https://www.googleapis.com/auth/calendar.readonly",
                     "https://www.googleapis.com/auth/calendar.events",
                 ),
                 False,
@@ -103,13 +119,17 @@ class RuntimeContainer:
                 development_enabled,
             ),
         )
-        providers: dict[str, OAuthProvider] = (
-            {"development": DevelopmentOAuthProvider()} if development_enabled else {}
-        )
+        providers: dict[str, OAuthProvider] = dict(build_official_oauth_providers(self.credentials))
+        if development_enabled:
+            providers["development"] = DevelopmentOAuthProvider()
+        self.oauth_providers = providers
         self.integrations = IntegrationService(self.credentials, definitions, providers)
+        self.integration_actions = ConnectedAccountActions(self.integrations)
         self.gemini = GeminiProvider(self.credentials, gemini_transport)
         self.approvals = ApprovalService(frozenset({"local-owner"}))
-        self.application = ZyroApplication(data_dir, self.integrations, self.gemini)
+        self.application = ZyroApplication(
+            data_dir, self.integrations, self.gemini, self.approvals, self.credentials
+        )
 
     def _verify_existing_databases(self) -> None:
         for path in self.data_dir.glob("*.sqlite"):
@@ -145,7 +165,7 @@ def create_app(
 
     app = FastAPI(
         title="ZYRO Local API",
-        version="0.13.0",
+        version="0.14.0",
         docs_url="/api/docs",
         redoc_url=None,
         lifespan=lifespan,
@@ -296,6 +316,50 @@ def create_app(
         runtime.gemini.remove()
         runtime.credentials.set_setting("models.default_provider", "zyro.local")
 
+    @app.get("/api/research/configuration")
+    def research_configuration(
+        _: AuthenticatedPrincipal = Depends(principal),
+    ) -> dict[str, Any]:
+        return {
+            "provider": "Brave Search",
+            "status": (
+                "CONFIGURED"
+                if runtime.credentials.has_secret(BRAVE_API_KEY_SECRET)
+                else "NOT_CONFIGURED"
+            ),
+            "configured": runtime.credentials.has_secret(BRAVE_API_KEY_SECRET),
+        }
+
+    @app.put("/api/research/configuration")
+    def configure_research(
+        body: ResearchConfigurationBody,
+        _: AuthenticatedPrincipal = Depends(mutating_principal),
+    ) -> dict[str, Any]:
+        runtime.credentials.set_secret(BRAVE_API_KEY_SECRET, body.api_key.strip())
+        handler = BraveSearchHandler(runtime.credentials)
+        result = handler.execute(
+            ToolExecutionContext(
+                "research.web_search",
+                "configuration-test",
+                "configuration-test",
+                "zyro.research",
+                "configuration-test",
+                "configuration-test",
+            ),
+            {"query": "ZYRO configuration test", "count": 1},
+        )
+        if not result.succeeded:
+            runtime.credentials.delete_secret(BRAVE_API_KEY_SECRET)
+            assert result.error is not None
+            raise HTTPException(422, result.error.message)
+        return {"provider": "Brave Search", "status": "CONFIGURED", "configured": True}
+
+    @app.delete("/api/research/configuration", status_code=204)
+    def remove_research_configuration(
+        _: AuthenticatedPrincipal = Depends(mutating_principal),
+    ) -> None:
+        runtime.credentials.delete_secret(BRAVE_API_KEY_SECRET)
+
     @app.post("/api/auth/logout", status_code=204)
     def logout(
         response: Response,
@@ -433,6 +497,13 @@ def create_app(
                     "agent_ids": ["freelancing.domain"],
                     "capabilities": ["qualification", "scoring", "outreach", "delivery", "QA"],
                 },
+                {
+                    "department_id": "research",
+                    "name": "Research",
+                    "status": "ACTIVE",
+                    "agent_ids": ["zyro.research"],
+                    "capabilities": ["web search", "source reading", "comparison", "synthesis"],
+                },
                 *(
                     {
                         "department_id": name.lower(),
@@ -442,7 +513,6 @@ def create_app(
                         "capabilities": [],
                     }
                     for name in (
-                        "Research",
                         "Content",
                         "Finance",
                         "Development",
@@ -458,6 +528,35 @@ def create_app(
     ) -> tuple[dict[str, Any], ...]:
         return runtime.application.agents()
 
+    @app.put("/api/integrations/providers/{provider_id}/configuration")
+    def configure_oauth_provider(
+        provider_id: str,
+        body: OAuthProviderConfigurationBody,
+        _: AuthenticatedPrincipal = Depends(mutating_principal),
+    ) -> dict[str, Any]:
+        provider = runtime.oauth_providers.get(provider_id)
+        configure = getattr(provider, "configure", None)
+        if provider is None or configure is None or provider_id == "development":
+            raise HTTPException(404, "configurable OAuth provider is not registered")
+        configure(body.client_id, body.client_secret)
+        return {"provider": provider_id, "status": "CONFIGURED"}
+
+    @app.delete("/api/integrations/providers/{provider_id}/configuration", status_code=204)
+    def remove_oauth_provider_configuration(
+        provider_id: str,
+        _: AuthenticatedPrincipal = Depends(mutating_principal),
+    ) -> None:
+        provider = runtime.oauth_providers.get(provider_id)
+        remove = getattr(provider, "remove_configuration", None)
+        if provider is None or remove is None or provider_id == "development":
+            raise HTTPException(404, "configurable OAuth provider is not registered")
+        if any(
+            item.integration_id == provider_id and item.status.value == "CONNECTED"
+            for item in runtime.integrations.connections()
+        ):
+            raise HTTPException(409, "disconnect provider accounts before removing configuration")
+        remove()
+
     @app.get("/api/integrations")
     def integrations(
         _: AuthenticatedPrincipal = Depends(principal),
@@ -467,6 +566,20 @@ def create_app(
             "definitions": runtime.integrations.definitions(),
             "connections": connections,
         }
+
+    @app.post("/api/integrations/connections/{connection_id}/actions/{action}")
+    def integration_action(
+        connection_id: str,
+        action: str,
+        arguments: dict[str, Any],
+        _: AuthenticatedPrincipal = Depends(mutating_principal),
+    ) -> dict[str, Any]:
+        try:
+            return runtime.integration_actions.execute(connection_id, action, arguments)
+        except (KeyError, ValueError) as error:
+            raise HTTPException(409, str(error)) from error
+        except Exception as error:
+            raise HTTPException(502, f"provider request failed: {type(error).__name__}") from error
 
     @app.post("/api/integrations/{integration_id}/oauth/start")
     def oauth_start(

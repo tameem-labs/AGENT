@@ -1,8 +1,8 @@
 # ZYRO
 
-ZYRO 0.13.0 is a runnable local-first Personal Executive AI product. It exposes an authenticated localhost interface backed by the same canonical Executive, Task, Agent, Model Router, Workflow, Resource, Verification, Recovery, and domain contracts used by the library.
+ZYRO 0.14.0 is a runnable local-first Personal Executive AI product. It exposes an authenticated localhost interface backed by the same canonical Executive, Task, Agent, Model Router, Workflow, Resource, Verification, Recovery, and domain contracts used by the library.
 
-Google Gemini is the default configurable AI provider and is invoked through the canonical Model Router when its key validates. The deterministic local provider remains an explicitly **SIMULATED** fallback. Google account OAuth, GitHub, Instagram, real email/CRM, and browser/computer control still require reviewed provider configuration and are shown as **NOT CONFIGURED** or **UNAVAILABLE**. Voice uses the browser's real Web Speech recognition and synthesis APIs when supported, and reports unavailable otherwise.
+Google Gemini is the default configurable AI provider and is invoked through the canonical Model Router when its key validates. The deterministic local provider remains an explicitly **SIMULATED** fallback. Official configurable OAuth adapters are included for Google, GitHub, and Instagram; they remain **NOT CONFIGURED** until the owner enters developer client credentials in Integration Center. Bounded read-only Gmail, Drive, Calendar, GitHub, and official Instagram actions are available after connection. Consequential writes remain blocked rather than bypassing canonical authority. Voice uses the browser's real Web Speech recognition and synthesis APIs when supported, and reports unavailable otherwise.
 
 ## Start locally
 
@@ -70,11 +70,12 @@ For an Arena/live-preview host, bind explicitly with `zyro serve --host 0.0.0.0`
 - **Organization:** real registered Executive and Freelancing agents show current work, capabilities, permissions, model and verification requirements; unimplemented departments are explicitly PLANNED.
 - **Approval Center:** reserved for canonical backend Approval state; no frontend-only approval authority exists.
 - **Memory and Activity:** honest canonical state views and correlated Workflow history. Credentials never enter Memory.
-- **Integration Center:** provider-neutral definitions, multiple account records, server-side OAuth state and PKCE, callback exchange, encrypted local token vault, disconnect/revoke, scopes, health, and connected account display.
+- **Integration Center:** configure official Google/GitHub/Instagram OAuth clients in the UI, connect multiple accounts with state/PKCE, encrypted tokens, refresh/revoke/disconnect, scope and health display, and bounded official read actions.
+- **Research:** configure Brave Search in Settings, then ask “Research …” to run the registered Research Agent through authorized Resource-admitted search/source tools, Gemini synthesis, source digests, timestamps, provenance, and uncertainty.
 - **System Status and Settings:** actual local runtime, provider, Workflow, Task, integration, voice, and browser availability.
 - **Responsive dark frontend:** static product assets are served by the authenticated FastAPI application; the browser never accesses SQLite directly.
 
-## Safety changes in 0.13.0
+## Safety changes in 0.14.0
 
 - Trusted domain verification now requires verifier-issued, HMAC-authenticated evidence binding subject/action, Task, Workflow, source, reference, digest, verifier, method, result, timestamp, and trust class. Arbitrary strings and `passed=True` no longer create trusted outreach, deliverable, QA, or Handoff completion.
 - Local authentication is separate from Permission and Approval. OAuth permission is also separate from ZYRO action authority.
@@ -94,7 +95,7 @@ UI → OAuth initiation → provider → callback → backend exchange
    → encrypted credential vault → scoped Integration Connection → bounded Tool
 ```
 
-The development OAuth connector is explicitly simulated and useful for local testing. Google/GitHub/Instagram definitions are visible but not configured because this repository contains no provider client credentials. A real adapter must supply its OAuth endpoints and token exchange server-side. OAuth scopes do not grant ZYRO Tool Permission or action Approval.
+The development connector remains explicitly simulated. Google, GitHub, and Instagram use official authorization/token/profile endpoints after encrypted client configuration through the UI. No client credential is bundled. Connected-account read actions enforce recorded scopes and keep access/refresh tokens backend-only. OAuth scopes do not grant ZYRO Tool Permission or action Approval; consequential provider writes are intentionally not exposed until composed through canonical Permission and Approval.
 
 Local credentials are AES-GCM encrypted with a randomly generated mode-0600 key under `ZYRO_DATA_DIR`. Do not commit `.zyro`, `.env`, provider secrets, databases, or backup files.
 
@@ -116,4 +117,4 @@ See `PROJECT_MAP.md`, `PROGRESS.md`, and `docs/05_DEVELOPMENT/PRODUCTION_READINE
 
 ## Current limitations
 
-ZYRO is a usable local product, not a production cloud deployment. Gemini is live only after the owner supplies and validates a key; availability, quota, regional access, and billing remain controlled by Google. No configured Google account OAuth, Gmail, Drive, Calendar, GitHub, Instagram, email/CRM, webhook, browser/computer, payment, distributed worker, TLS termination, HA, or monitoring SaaS is bundled. Voice depends on browser Web Speech support and the browser/OS speech service; it does not establish identity or authority. The local fallback is deterministic and does not claim general reasoning or external research. Permission and Approval records outside the authenticated application composition remain process-local. Multi-process SQLite operation is not qualified. Version 1.0 production readiness is not claimed.
+ZYRO is a usable local product, not a production cloud deployment. Gemini is live only after the owner supplies and validates a key; availability, quota, regional access, and billing remain controlled by Google. No OAuth client credentials or connected accounts are bundled. Gmail draft/send/reply, Drive upload/create/update, Calendar create/update, and GitHub mutation are not exposed because their canonical write Permission/Approval/verification composition is not yet implemented. Browser/computer control, payments, distributed workers, TLS termination, HA, and monitoring SaaS are not bundled. Voice depends on browser Web Speech support and the browser/OS speech service; it does not establish identity or authority. The local fallback is deterministic and does not claim general reasoning or external research. Permission and Approval records outside the authenticated application composition remain process-local. Multi-process SQLite operation is not qualified. Version 1.0 production readiness is not claimed.

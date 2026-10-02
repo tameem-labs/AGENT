@@ -15,7 +15,7 @@ from zyro.application.store import ApplicationStore
 from zyro.core.executive import UserRequest, ZyroExecutive
 from zyro.core.risk import RiskClass
 from zyro.execution.verification import StructuralRuntimeVerifier
-from zyro.integrations import IntegrationService
+from zyro.integrations import EncryptedCredentialStore, IntegrationService
 from zyro.models.contracts import (
     ModelComplexity,
     ModelDefinition,
@@ -28,9 +28,28 @@ from zyro.models.contracts import (
 )
 from zyro.models.gemini import GeminiProvider
 from zyro.models.router import build_model_router
-from zyro.resources import ResourceAwareModelInvoker, ResourcePolicy, SQLiteResourceManager
+from zyro.research import BraveSearchHandler, ResearchAgentHandler, SafeSourceReader
+from zyro.resources import (
+    ResourceAwareModelInvoker,
+    ResourceAwareToolInvoker,
+    ResourcePolicy,
+    SQLiteResourceManager,
+)
 from zyro.runtime.agent_runtime import AgentRuntime
+from zyro.security.approval import ApprovalService
+from zyro.security.authorization import ToolAuthorizationService
 from zyro.security.identity import AuthenticatedPrincipal
+from zyro.security.permission import (
+    Permission,
+    PermissionEvaluator,
+    PermissionScope,
+    PermissionStore,
+    PrincipalDirectory,
+)
+from zyro.security.policy import RiskPolicy
+from zyro.tools.contracts import ToolDefinition
+from zyro.tools.executor import ToolExecutor
+from zyro.tools.registry import ToolRegistry
 from zyro.workflows import (
     StepExecution,
     TriggerKind,
@@ -107,6 +126,8 @@ class ZyroApplication:
         data_dir: str | Path,
         integrations: IntegrationService,
         gemini: GeminiProvider,
+        approvals: ApprovalService,
+        credentials: EncryptedCredentialStore,
     ) -> None:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -142,6 +163,93 @@ class ZyroApplication:
         )
         router = build_model_router((gemini_model, local_model), (gemini, LocalAssistantProvider()))
         model_invoker = ResourceAwareModelInvoker(router, self.resources)
+        tool_registry = ToolRegistry()
+        tool_registry.register(
+            ToolDefinition(
+                "research.web_search",
+                "Brave Web Search",
+                "1",
+                "Search the public web through the official Brave Search API",
+                frozenset({"research.search"}),
+                {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "count": {"type": "integer"},
+                    },
+                    "required": ["query"],
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "results": {"type": "array"},
+                    },
+                    "required": ["query", "results"],
+                },
+                "brave-search",
+                RiskClass.AUTOMATIC,
+                timeout_seconds=20,
+            ),
+            BraveSearchHandler(credentials),
+        )
+        tool_registry.register(
+            ToolDefinition(
+                "research.read_source",
+                "Safe Public Source Reader",
+                "1",
+                "Read one bounded public HTTP source with SSRF protection",
+                frozenset({"research.read"}),
+                {
+                    "type": "object",
+                    "properties": {"url": {"type": "string"}},
+                    "required": ["url"],
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string"},
+                        "text": {"type": "string"},
+                        "digest": {"type": "string"},
+                        "retrieved_at": {"type": "string"},
+                        "method": {"type": "string"},
+                    },
+                    "required": ["url", "text", "digest", "retrieved_at", "method"],
+                },
+                "safe-source-reader",
+                RiskClass.AUTOMATIC,
+                timeout_seconds=20,
+            ),
+            SafeSourceReader(),
+        )
+        principals = PrincipalDirectory()
+        principals.register("zyro.research")
+        permissions = PermissionStore()
+        for capability, tool_id in (
+            ("research.search", "research.web_search"),
+            ("research.read", "research.read_source"),
+        ):
+            permissions.add(
+                Permission(
+                    f"permission-{capability}",
+                    "zyro.research",
+                    capability,
+                    PermissionScope(tool_id=tool_id, target="public-web", action="execute"),
+                    "product-v1",
+                )
+            )
+        evaluator = PermissionEvaluator(
+            permissions,
+            principals,
+            frozenset({"research.search", "research.read"}),
+            policy_version="product-v1",
+        )
+        tool_authorizer = ToolAuthorizationService(
+            evaluator, RiskPolicy(policy_version="product-v1"), approvals
+        )
+        tool_invoker = ResourceAwareToolInvoker(
+            ToolExecutor(tool_registry, tool_authorizer), self.resources
+        )
         agents = AgentRegistry()
         self.executive_agent = AgentDefinition(
             "zyro.executive",
@@ -160,11 +268,29 @@ class ZyroApplication:
             ),
         )
         agents.register(self.executive_agent, ExecutiveChatHandler())
+        self.research_agent = AgentDefinition(
+            "zyro.research",
+            "ZYRO Research",
+            "1.0.0",
+            "Collect and compare externally sourced evidence without inventing sources",
+            "research",
+            ("web search", "source reading", "comparison", "synthesis"),
+            ("research.search", "research.read"),
+            risk_class=RiskClass.AUTOMATIC,
+            model_requirements=ModelRequirements(
+                "research.synthesis",
+                frozenset({"conversation", "planning"}),
+                complexity=ModelComplexity.COMPLEX,
+            ),
+        )
+        agents.register(self.research_agent, ResearchAgentHandler())
         self.executive = ZyroExecutive(
-            AgentRuntime(agents, model_invoker=model_invoker), StructuralRuntimeVerifier()
+            AgentRuntime(agents, model_invoker=model_invoker, tool_invoker=tool_invoker),
+            StructuralRuntimeVerifier(),
         )
         self.engine = WorkflowEngine(self.workflows)
         self.engine.register("assistant.respond", self._run_assistant_step)
+        self.engine.register("research.execute", self._run_assistant_step)
         self.integrations = integrations
         self.gemini = gemini
 
@@ -192,6 +318,11 @@ class ZyroApplication:
             workflow_id=workflow_id,
             correlation_id=correlation_id,
         )
+        research_requested = (
+            clean.lower().startswith("research ") or "research this" in clean.lower()
+        )
+        selected_agent = self.research_agent if research_requested else self.executive_agent
+        step_capability = "research.execute" if research_requested else "assistant.respond"
         definition = WorkflowDefinition(
             workflow_id,
             request_id,
@@ -200,10 +331,12 @@ class ZyroApplication:
             clean,
             (
                 WorkflowStep(
-                    "understand-and-respond",
-                    "Understand, plan and respond",
-                    "assistant.respond",
-                    self.executive_agent.agent_id,
+                    "research-and-report" if research_requested else "understand-and-respond",
+                    "Search, compare, verify and synthesize"
+                    if research_requested
+                    else "Understand, plan and respond",
+                    step_capability,
+                    selected_agent.agent_id,
                     max_attempts=2,
                 ),
             ),
@@ -261,7 +394,11 @@ class ZyroApplication:
                 "status": result.task_status.value,
                 "agent_id": step.agent_id,
                 "model_id": value.get("model_id"),
-                "tools": [],
+                "tools": (
+                    ["research.web_search", "research.read_source"]
+                    if step.agent_id == self.research_agent.agent_id
+                    else []
+                ),
                 "resource": {"task_limit": self.resources.policy.task_token_limit},
                 "verification": {
                     "outcome": result.verification.status.value,
@@ -331,10 +468,21 @@ class ZyroApplication:
         executive_work = [
             item for item in tasks if item.get("agent_id") == self.executive_agent.agent_id
         ]
+        research_work = [
+            item for item in tasks if item.get("agent_id") == self.research_agent.agent_id
+        ]
         current = next(
             (
                 item
                 for item in executive_work
+                if item.get("status") not in {"DONE", "FAILED", "CANCELLED"}
+            ),
+            None,
+        )
+        research_current = next(
+            (
+                item
+                for item in research_work
                 if item.get("status") not in {"DONE", "FAILED", "CANCELLED"}
             ),
             None,
@@ -360,6 +508,27 @@ class ZyroApplication:
                 "recent_work": tuple(
                     {"task_id": item["task_id"], "goal": item["goal"], "status": item["status"]}
                     for item in executive_work[:5]
+                ),
+            },
+            {
+                "agent_id": self.research_agent.agent_id,
+                "name": self.research_agent.name,
+                "role": self.research_agent.role,
+                "domain": self.research_agent.domain,
+                "capabilities": self.research_agent.capabilities,
+                "permissions": self.research_agent.permissions,
+                "model_requirements": {"task_type": "research.synthesis"},
+                "status": "ACTIVE" if research_current is not None else "AVAILABLE",
+                "current_task": (None if research_current is None else research_current["task_id"]),
+                "verification_requirements": (
+                    "provider search response",
+                    "source content digest",
+                    "retrieval timestamp",
+                    "cross-source comparison",
+                ),
+                "recent_work": tuple(
+                    {"task_id": item["task_id"], "goal": item["goal"], "status": item["status"]}
+                    for item in research_work[:5]
                 ),
             },
             {

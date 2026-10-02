@@ -10,11 +10,34 @@ This file is a chronological, append-only implementation record. Add new entries
 
 ## Current status
 
-- **Current delivery phase:** Final Round 2 completion audit — **BLOCKED ON UNIMPLEMENTED EXTERNAL SERVICE ADAPTERS**
-- **Architecture-roadmap equivalent:** Usable local product with real configurable Gemini and browser-native voice over the canonical Executive path
-- **Next permitted work:** Implement and credential official Google/Gmail/Drive/Calendar, GitHub, browser/computer, and approved Instagram adapters without weakening authority boundaries.
-- **Known blockers:** The requested real external-service flows cannot be certified because official OAuth client credentials/provider approvals are absent and the repository does not yet implement those provider-specific tools. Browser/computer control also has no sandbox runtime.
-- **Explicitly not implemented:** live Google Account/Gmail/Drive/Calendar, GitHub, Instagram, email/CRM, autonomous lead discovery, production browser/computer control, payments, distributed/cloud deployment, and monitoring SaaS remain **NOT CONFIGURED**, **UNAVAILABLE**, or **NOT IMPLEMENTED**. Gemini is real but only CONFIGURED after owner key validation; voice is real only where browser Web Speech APIs are available.
+- **Current delivery phase:** Advanced Phase 1 — real integrations and research — **PARTIAL, TESTED, EXTERNAL CONFIGURATION REQUIRED**
+- **Architecture-roadmap equivalent:** Canonical Research Agent plus configurable official OAuth and bounded provider-read foundation over the local product
+- **Next permitted work:** Compose consequential provider writes through durable Permission, Approval, Resource, Recovery, and provider-derived verification before exposing them.
+- **Known blockers:** Real-provider certification requires owner-supplied OAuth/Search credentials and test accounts. Provider approvals may be required for Instagram. Browser/computer control has no sandbox runtime.
+- **Explicitly not implemented:** Gmail draft/send/reply, Drive upload/create/update, Calendar create/update, GitHub mutation, autonomous outreach, browser/computer control, payments, distributed deployment, and monitoring SaaS remain **BLOCKED**, **UNAVAILABLE**, or **NOT IMPLEMENTED**.
+
+---
+
+## 2026-10-02 — Advanced Phase 1: real integrations and research
+
+### Status
+
+**PARTIAL AND TESTED; REAL ADAPTERS IMPLEMENTED, EXTERNAL ACCOUNTS NOT CONFIGURED** — package advanced to **0.14.0**.
+
+### Implementation
+
+- Added configurable official Google, GitHub, and Instagram OAuth adapters with UI-managed encrypted client credentials, official authorization/token/profile endpoints, state, PKCE, backend exchange, refresh where supported, revoke/disconnect, multiple account identities, dynamic configured status, scopes, and health.
+- Added backend-only bounded read actions for Gmail list/search/message/thread, Drive list/search/metadata, Calendar calendars/events/search/read, GitHub repositories/files/branches/commits/issues/pull requests/status, and official Instagram profile/media. Recorded OAuth scopes are enforced. Consequential writes are rejected rather than bypassing ZYRO authority.
+- Added a real Research Agent registered with Executive/Task/Agent Runtime. It uses an explicitly permitted Brave Search Tool and SSRF-safe bounded source reader behind ToolExecutor, dispatch grants, Resource concurrency leases, model accounting, structural verification, and durable Task/Workflow projections.
+- Research output preserves source URLs, SHA-256 content digests, retrieval timestamps, bounded excerpts, conclusions, and explicit coverage uncertainty. Source text is treated as untrusted data and cannot grant authority.
+- Added encrypted Brave Search configuration and server-side Save & Test in Settings. No Search/OAuth secret is returned to the browser or placed in Task, Workflow, chat, Memory, Knowledge, or logs.
+
+### Validation
+
+- Safe transport-double E2E covers UI/API → Workflow → Research Agent → authorized Resource-admitted Tools → Gemini → Verification → Task/UI with two independent source digests.
+- Official OAuth configuration tests cover encrypted client secrets, dynamic configured state, official Google authorization URL, PKCE, and removal. Connected-account action tests verify backend-only bearer tokens and absence from URLs.
+- External live-account certification remains NOT CONFIGURED because no credentials were supplied.
+- Final available gate: **324 tests passed**; Ruff lint/format passed across 172 files; strict mypy passed across 172 source files; compileall and JavaScript syntax passed.
 
 ---
 

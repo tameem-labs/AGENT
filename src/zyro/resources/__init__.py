@@ -19,7 +19,7 @@ from zyro.resources.contracts import (
 )
 from zyro.resources.manager import ResourceManagerError, SQLiteResourceManager
 from zyro.resources.recovery import ResourceRecoveryBridge
-from zyro.resources.runtime import ResourceAwareModelInvoker
+from zyro.resources.runtime import ResourceAwareModelInvoker, ResourceAwareToolInvoker
 
 __all__ = [
     "DEFAULT_TASK_TOKEN_LIMIT",
@@ -31,6 +31,7 @@ __all__ = [
     "RateLimitResult",
     "ReservationStatus",
     "ResourceAwareModelInvoker",
+    "ResourceAwareToolInvoker",
     "ResourceKind",
     "ResourceManagerError",
     "ResourcePolicy",
