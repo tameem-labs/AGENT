@@ -10,11 +10,77 @@ This file is a chronological, append-only implementation record. Add new entries
 
 ## Current status
 
-- **Current delivery phase:** Phase 7 — Memory + State + Knowledge + Context — **VERIFIED**
-- **Architecture-roadmap equivalent:** Phase 7 — Memory + State + Knowledge + Context
-- **Next permitted work:** Phase 8 — Recovery + Observability + Resource Hardening, only when explicitly requested
+- **Current delivery phase:** Phase 8 — Recovery + Observability + Resource Hardening — **VERIFIED**
+- **Architecture-roadmap equivalent:** Recovery + Observability + Resource Hardening
+- **Next permitted work:** Phase 9 — Outreach + Approval + External Action Execution, only when explicitly requested
 - **Known blockers:** None
-- **Explicitly not implemented:** full recovery/observability/resource management, scheduler, workflow engine, lead finding/research integrations, outreach, email, CRM, client replies, delivery, QA, handoff, real external model/tools, vector/distributed/cloud storage, browser/computer control, and voice/camera remain **DOCUMENTED** only.
+- **Explicitly not implemented:** scheduler, workflow engine, lead finding/research integrations, outreach/external action execution, email, CRM, client replies, delivery, QA, handoff, real external model/tools, vector/distributed/cloud storage, browser/computer control, voice/camera, distributed workers/brokers, monitoring SaaS, and autonomous self-healing remain **DOCUMENTED** only.
+
+---
+
+## 2026-10-02 04:26:03 UTC — Phase 8: Recovery + Observability + Resource Hardening
+
+### Status
+
+**IMPLEMENTED, TESTED, VERIFIED**
+
+### Inspection result
+
+- Recovery, Observability, and Resource package boundaries existed but had no implementation. Existing canonical Task transitions, Phase 6 Event Bus contracts, Phase 4 authorization/approval, and independent verification were retained rather than duplicated.
+- Existing Executive retry remains the Task execution authority. Phase 8 therefore adds a deterministic decision layer and narrow canonical Task adapter, not a second autonomous retry loop.
+- SQLite remains the repository-consistent durable local mechanism. No scheduler, worker fleet, distributed broker, monitoring service, external provider, or self-healing executor was introduced.
+
+### What was implemented
+
+- Added a structured Recovery failure taxonomy covering validation, authorization, approval, model, tool, network, timeout, persistence, resource exhaustion, process crash, unknown, external-side-effect uncertainty, verification, and dependency failures while preserving all available stable component and trace identities.
+- Added deterministic finite Recovery decisions for bounded exponential retry, resource wait, registered fallback, resume, escalation, stop, and uncertainty. Decisions account for retryability, attempt bounds, idempotency, side effects, resources, and current state; model output has no recovery authority.
+- Added durable recoverable-operation and decision persistence plus idempotent startup reconciliation. Uncertain external effects are marked uncertain rather than repeated or inferred successful, and verification-only work resumes verification without re-executing the action.
+- Added a canonical Task retry adapter and bounded Recovery Event publication seam while preserving Task and Event Bus authority boundaries.
+- Added durable SQLite operational traces with bounded indexed queries and applicable request/task/workflow/agent/instance/correlation/model/tool/approval/verification/recovery/message/event identities, status, duration, attempts, failure classification, resource usage, and recursively redacted bounded metadata.
+- Added fail-open observers to Executive and Agent Runtime plus composable model/tool observation adapters. Telemetry failures cannot alter runtime outcomes; observations do not mutate Task/State or become Memory.
+- Added configurable local Resource policy and manager for task/workflow token budgets, task/agent/tool concurrency, deterministic queues, interactive preference with aged-background fairness, renewable expiring leases, exact/estimated/unknown accounting, provider/tool rate windows, durable usage, and hard-stop history.
+- Added startup lease expiry/promotion without double-counting, terminal reservation idempotency, and a narrow resource-exhaustion-to-Recovery bridge that cannot bypass hard limits. Defaults are 50,000 tokens per task and 300,000 per workflow.
+- Extended safe configuration/environment overrides and recursive structured logging redaction, updated runtime policy/README/project map, and advanced package metadata to 0.8.0.
+
+### Files created or modified
+
+- Recovery: `src/zyro/recovery/{contracts,policy,store,task_adapter}.py` and package exports
+- Observability: `src/zyro/observability/{contracts,store,service,adapters}.py` and package exports
+- Resources: `src/zyro/resources/{contracts,manager,configuration,recovery}.py` and package exports
+- Core/runtime/configuration: `src/zyro/core/{config,data,logging,executive}.py`, `src/zyro/runtime/agent_runtime.py`, and `config/default.toml`
+- Tests: Recovery, Observability, and Resource unit suites; runtime-hardening cross-subsystem integration; Phase 8 architecture boundaries; updated runtime version smoke
+- Documentation/version: `README.md`, `PROJECT_MAP.md`, `docs/04_RUNTIME/RUNTIME_POLICY.md`, `PROGRESS.md`, `pyproject.toml`, and package version export
+
+### Tests and verification
+
+- `.venv/bin/pytest -q` — **TESTED**, 258 tests passed, including all Phase 1–7 regressions and Phase 8 taxonomy, decision, uncertainty, restart, trace, redaction, admission, accounting, fairness, lease, rate-limit, hard-stop, cross-subsystem, security, and architecture paths.
+- Focused Phase 8/configuration pytest run — **TESTED**, 51 tests passed.
+- `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .` — **VERIFIED**, all checks passed and all 142 Python files formatted.
+- `.venv/bin/mypy` — **VERIFIED**, no issues found in 124 source/test files.
+- `.venv/bin/python -m compileall -q src tests`, editable 0.8.0 installation, CLI, imports, package/distribution version, and configured-default smoke — **VERIFIED**.
+- Tracked secret-path/content scans, forbidden distributed-infrastructure scan, `git diff --check`, complete diff/status review, commit, and normal branch push — **VERIFIED**.
+
+### Verified failure and boundary behavior
+
+- Retry is finite and deterministic. Resource exhaustion stops, unavailable resources wait, unsupported dependency fallback escalates safely, and no decision grants permission, approval, execution, verification, or Task authority.
+- Unknown external-side-effect outcomes remain uncertain and are never blindly repeated. Process death alone proves neither success nor non-occurrence. Reconciliation decisions are durable and repeat safely.
+- Observer/store failures do not alter model, tool, runtime, verification, or Task results. Secret-shaped nested metadata is redacted before persistence, exception messages are excluded from structured logs, telemetry payloads/queries are bounded, and stable identifiers remain queryable.
+- Rejected token usage is not silently consumed or reset. Hard-stop history, valid leases, queues, and accounting survive restart; expired leases release capacity. Exact, estimated, and unknown usage remain distinct.
+- Interactive work receives normal preference while sufficiently aged background work is promoted. Repeated rate-limit request identities and reservation identities are idempotent; released/expired reservations cannot silently revive.
+- Architecture guards preserve Recovery ≠ Task/Execution/Approval, Observability ≠ State/Memory/Recovery, and Resource Manager ≠ Scheduler/Permission/Task planning.
+
+### Known limitations
+
+- Recovery, trace storage, and resource management are synchronous single-process SQLite services. Product composition must invoke their boundaries; there is no hidden scheduler, asynchronous worker, distributed lease coordinator, or cloud backend.
+- Recovery records and recommends actions but does not execute them. Safe reconciliation requires a caller-provided mechanism; otherwise uncertain external effects remain uncertain.
+- Observer timing is process-local and operational rather than distributed tracing. The repository includes no monitoring exporter, metrics backend, dashboard, alerting service, or automatic Memory ingestion.
+- Token accounting can be exact only when callers supply provider evidence. Unknown usage is recorded honestly and cannot enforce a numerical increment that is unavailable.
+- Rate-limit policies are local sliding windows. They do not claim synchronization with external providers or across processes.
+- Phase 9 outreach, approval-driven external action execution, and all later product capabilities are not included.
+
+### Next permitted phase
+
+Stop after Phase 8. The exact next phase is **Phase 9 — Outreach + Approval + External Action Execution** and must not begin without an explicit request.
 
 ---
 

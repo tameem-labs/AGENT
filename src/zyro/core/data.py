@@ -86,6 +86,26 @@ def validate_record(
     return cast(Mapping[str, Any], freeze(value))
 
 
+def redact(value: Any) -> Any:
+    """Return JSON-compatible telemetry with secret-shaped values removed."""
+    if isinstance(value, Mapping):
+        return {
+            str(key): (
+                "[REDACTED]"
+                if str(key).lower().replace("-", "_") in _SENSITIVE_NAMES
+                else redact(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [redact(item) for item in value]
+    if isinstance(value, str) and _SECRET_TEXT.search(value):
+        return "[REDACTED]"
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return f"<{type(value).__name__}>"
+
+
 def normalized_terms(query: str) -> tuple[str, ...]:
     return tuple(sorted(set(re.findall(r"[a-z0-9]+", query.lower()))))
 
@@ -104,6 +124,7 @@ __all__ = [
     "lexical_score",
     "normalized_terms",
     "plain",
+    "redact",
     "validate_record",
     "validate_text",
 ]

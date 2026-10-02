@@ -3,3 +3,8 @@
 [zyro]
 environment = "development"
 log_level = "INFO"
+task_token_limit = 50000
+workflow_token_limit = 300000
+max_concurrent_tasks = 8
+max_concurrent_agents = 8
+max_concurrent_tool_calls = 4

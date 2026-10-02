@@ -13,6 +13,8 @@ from zyro.core.errors import ErrorInfo, MissingAgentError
 from zyro.core.logging import LogContext, get_logger
 from zyro.core.task import Task
 from zyro.models.contracts import ModelInvoker
+from zyro.observability.contracts import TraceStatus
+from zyro.observability.service import Observer, TraceContext
 from zyro.tools.contracts import ToolInvoker
 
 
@@ -32,12 +34,14 @@ class AgentRuntime:
         model_invoker: ModelInvoker | None = None,
         tool_invoker: ToolInvoker | None = None,
         context_provider: ContextProvider | None = None,
+        observer: Observer | None = None,
     ) -> None:
         self._registry = registry
         self._instance_id_factory = instance_id_factory or (lambda: str(uuid4()))
         self._model_invoker = model_invoker
         self._tool_invoker = tool_invoker
         self._context_provider = context_provider
+        self._observer = observer
 
     def execute(self, task: Task, agent_id: str) -> RuntimeExecution:
         """Execute exactly one task attempt; invalid duplicate attempts are rejected."""
@@ -52,6 +56,14 @@ class AgentRuntime:
                 error_type=type(error).__name__,
             )
             task.fail(failure)
+            self._observe(
+                task,
+                agent_id,
+                None,
+                "AGENT_DISPATCH_FAILED",
+                TraceStatus.FAILED,
+                error=failure,
+            )
             return RuntimeExecution(None, AgentExecution.failure(failure))
 
         instance = AgentInstance(
@@ -62,6 +74,13 @@ class AgentRuntime:
             correlation_id=task.correlation_id,
         )
         instance.start()
+        self._observe(
+            task,
+            agent_id,
+            instance.instance_id,
+            "AGENT_DISPATCHED",
+            TraceStatus.STARTED,
+        )
         context = ExecutionContext(
             task_id=task.task_id,
             request_id=task.request_id,
@@ -100,6 +119,14 @@ class AgentRuntime:
             task.fail(failure)
             # Exception content is deliberately excluded because handlers may process secrets.
             logger.error("agent execution raised an exception")
+            self._observe(
+                task,
+                agent_id,
+                instance.instance_id,
+                "EXECUTION_COMPLETED",
+                TraceStatus.FAILED,
+                error=failure,
+            )
             return RuntimeExecution(instance, AgentExecution.failure(failure))
 
         if execution.succeeded:
@@ -131,4 +158,53 @@ class AgentRuntime:
             instance.fail(execution.error)
             task.fail(execution.error)
             logger.warning("agent execution failed")
+        trace_status = (
+            TraceStatus.SUCCEEDED
+            if execution.succeeded
+            else (
+                TraceStatus.WAITING
+                if execution.waiting_for_approval
+                else (TraceStatus.UNKNOWN if execution.outcome_unknown else TraceStatus.FAILED)
+            )
+        )
+        self._observe(
+            task,
+            agent_id,
+            instance.instance_id,
+            "EXECUTION_COMPLETED",
+            trace_status,
+            error=execution.error,
+        )
         return RuntimeExecution(instance, execution)
+
+    def _observe(
+        self,
+        task: Task,
+        agent_id: str,
+        instance_id: str | None,
+        event_type: str,
+        status: TraceStatus,
+        *,
+        error: ErrorInfo | None = None,
+    ) -> None:
+        if self._observer is None:
+            return
+        try:
+            self._observer.record(
+                event_type,
+                "agent_runtime",
+                "execute",
+                status,
+                TraceContext(
+                    task.request_id,
+                    task.task_id,
+                    task.correlation_id,
+                    agent_id=agent_id,
+                    instance_id=instance_id,
+                ),
+                attempt=task.attempt_count,
+                error_classification=None if error is None else error.error_type,
+            )
+        except Exception:
+            # Operational telemetry is deliberately non-authoritative.
+            return

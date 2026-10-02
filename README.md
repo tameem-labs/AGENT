@@ -2,9 +2,9 @@
 
 ZYRO is specified as a personal Executive AI, computer agent, and AI organization. The user will interact with one canonical Executive while internal components coordinate domains, agents, models, tools, workflows, state, knowledge, security, execution, and verification.
 
-This repository has completed **Phase 7 — Memory + State + Knowledge + Context** in the delivery sequence. It implements the prior Executive/Task/Agent, model/tool, authorization, Freelancing, and durable communication phases plus selective historical Memory, owner-controlled current State, versioned reference Knowledge, and transient bounded Context Assembly. Phase 7 uses local SQLite persistence and deterministic lexical retrieval; it does **not** include vector search, external storage, a workflow engine, scheduler, full recovery/observability/resource management, outreach, email, CRM, browser control, or later delivery-domain behavior.
+This repository has completed **Phase 8 — Recovery + Observability + Resource Hardening** in the delivery sequence. It implements the prior Executive/Task/Agent, model/tool, authorization, Freelancing, communication, Memory/State/Knowledge/Context phases plus deterministic recovery decisions, durable operational traces, and local resource admission/accounting. These Phase 8 services are synchronous and SQLite-backed; they do **not** form a scheduler or workflow engine, grant permission or approval, perform external actions, or include outreach, email, CRM, browser control, distributed infrastructure, or later delivery-domain behavior.
 
-> Naming note: historical delivery phases 1–4 were offset by one from roadmap phases 0–3. Phase 7 corresponds to the memory/state/knowledge/context roadmap milestone; `PROGRESS.md` records actual implementation status.
+> Naming note: historical delivery phases 1–4 were offset by one from roadmap phases 0–3. `PROGRESS.md` records actual implementation status and phase mapping.
 
 ## Requirements
 
@@ -44,6 +44,9 @@ Core contracts are located at:
 - `src/zyro/state/` — owner-controlled current snapshots with compare-and-set revisions
 - `src/zyro/knowledge/` — controlled reference ingestion, deterministic chunking, source versions, and retrieval
 - `src/zyro/context/` — permission-filtered transient assembly with provenance, precedence, deduplication, and budgets
+- `src/zyro/recovery/` — failure taxonomy, deterministic bounded decisions, durable operation/reconciliation state, and Task/Event adapters
+- `src/zyro/observability/` — redacted durable operational traces, bounded queries, and fail-open runtime/model/tool adapters
+- `src/zyro/resources/` — token accounting, hard stops, concurrency queues, leases, lanes, rate limits, and the narrow Recovery bridge
 - `src/zyro/core/events.py` — canonical Event envelope plus the compatibility in-process publisher
 
 Providers and tools are registered programmatically with non-secret definitions. The repository ships no product provider adapter and requires no API key. Deterministic providers, tools, and lead fixtures under `tests/` are test infrastructure only. Model-requested tool calls are inert data: every supported tool execution passes through a required, separate authorizer before the handler. Capability, risk classification, standing permission, action approval, execution, verification, and Task completion remain distinct.
@@ -71,6 +74,11 @@ Safe defaults need no local configuration. ZYRO reads these optional process env
 
 - `ZYRO_ENV` (default: `development`)
 - `ZYRO_LOG_LEVEL` (default: `INFO`)
+- `ZYRO_TASK_TOKEN_LIMIT` (default: `50000`)
+- `ZYRO_WORKFLOW_TOKEN_LIMIT` (default: `300000`)
+- `ZYRO_MAX_CONCURRENT_TASKS` (default: `8`)
+- `ZYRO_MAX_CONCURRENT_AGENTS` (default: `8`)
+- `ZYRO_MAX_CONCURRENT_TOOL_CALLS` (default: `4`)
 
 `config/default.toml` documents equivalent non-secret settings. Code can explicitly pass a TOML path to `initialize_runtime`; local overrides should use ignored `config/local.toml`. The package intentionally does not auto-load `.env`, but `.env` and common secret paths are ignored for developer tooling. Never commit credentials or put secrets in config files, source, logs, or ordinary memory.
 

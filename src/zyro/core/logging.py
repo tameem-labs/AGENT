@@ -10,6 +10,8 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any, TextIO
 
+from zyro.core.data import redact
+
 TRACE_FIELDS = (
     "request_id",
     "task_id",
@@ -17,6 +19,21 @@ TRACE_FIELDS = (
     "agent_id",
     "instance_id",
     "correlation_id",
+)
+STRUCTURED_FIELDS = (
+    "event_type",
+    "component",
+    "operation",
+    "status",
+    "duration_ms",
+    "attempt",
+    "error_classification",
+    "resource_usage",
+    "model_id",
+    "tool_id",
+    "approval_id",
+    "verification_id",
+    "recovery_id",
 )
 
 
@@ -46,13 +63,15 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
-        for field in TRACE_FIELDS:
+        for field in (*TRACE_FIELDS, *STRUCTURED_FIELDS):
             value = getattr(record, field, None)
             if value is not None:
-                payload[field] = value
+                payload[field] = redact(value)
         if record.exc_info:
-            payload["exception"] = self.formatException(record.exc_info)
-        return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+            exception_type = record.exc_info[0]
+            if exception_type is not None:
+                payload["exception_type"] = exception_type.__name__
+        return json.dumps(redact(payload), separators=(",", ":"), ensure_ascii=False)
 
 
 def configure_logging(level: str = "INFO", stream: TextIO | None = None) -> logging.Logger:

@@ -15,6 +15,9 @@ ZYRO is designed as one canonical personal Executive backed by replaceable model
 | `src/zyro/state/` | Durable current snapshots, configured category ownership, authorized reads, and compare-and-set revisions |
 | `src/zyro/knowledge/` | Controlled reference ingestion, deterministic chunks, source versions, provenance, and bounded retrieval |
 | `src/zyro/context/` | Transient permission-filtered source selection, precedence, deduplication, provenance, and context budgets |
+| `src/zyro/recovery/` | Structured failures, deterministic recovery policy, durable operation/decision reconciliation, canonical Task retry adapter, and recovery events |
+| `src/zyro/observability/` | Durable bounded redacted execution traces, indexed queries, and fail-open runtime/model/tool observation adapters |
+| `src/zyro/resources/` | Configurable token/concurrency/rate controls, fair queues, expiring leases, durable usage/hard stops, and narrow Recovery integration |
 | `src/zyro/agents/` | Agent Definition, Agent Instance, bounded handler contract, and in-process registry |
 | `src/zyro/runtime/` | Process bootstrap plus Agent Runtime with narrow model/tool invocation boundaries |
 | `src/zyro/models/` | Provider-independent definitions, requirements, results, registries, provider contract, and deterministic router |
@@ -38,7 +41,7 @@ ZYRO is designed as one canonical personal Executive backed by replaceable model
 
 ## Architecture layers
 
-The intended flow is Interface → Executive/Identity/Brain → Orchestration and Runtime → Resource and State services → Tools/Execution → Permission/Approval/Security → Real World → Observability/Recovery. Implemented Core flow remains Executive → Task → Agent Definition/Instance → Agent Runtime → optional model/tool/context boundaries → independent verification → guarded Task completion. The Context Assembler gives an agent a bounded transient view rather than store access. It ranks current instruction and task data before current State, verified/factual Memory, inference Memory, and current Knowledge while every underlying read enforces scope and Phase 4 permission. Memory, State, and Knowledge use separate schemas and ownership rules. Communication remains transport and never owns Task, lead, or Phase 7 resource state. Empty package boundaries are not claims that later layers are implemented. Mandatory distinctions and safety constraints are in `docs/00_MASTER/ARCHITECTURE_INVARIANTS.md`.
+The intended flow is Interface → Executive/Identity/Brain → Orchestration and Runtime → Resource and State services → Tools/Execution → Permission/Approval/Security → Real World → Observability/Recovery. Implemented Core flow remains Executive → Task → Agent Definition/Instance → Agent Runtime → optional model/tool/context boundaries → independent verification → guarded Task completion. The Context Assembler gives an agent a bounded transient view rather than store access. It ranks current instruction and task data before current State, verified/factual Memory, inference Memory, and current Knowledge while every underlying read enforces scope and Phase 4 permission. Memory, State, and Knowledge use separate schemas and ownership rules. Communication remains transport and never owns Task or lead state. Resource controls gate capacity but never schedule or authorize work; Recovery produces safe decisions but never executes them; Observability records redacted operational facts but never mutates Task, State, or Memory. Mandatory distinctions and safety constraints are in `docs/00_MASTER/ARCHITECTURE_INVARIANTS.md`.
 
 ## Authority and source-of-truth rules
 
@@ -61,4 +64,5 @@ The delivery sequence labels the scaffold **Phase 1 — Foundation** and Executi
 - **Delivery Phase 5 / Roadmap Phase 5:** Freelancing Qualification + Scoring — implemented and verified as a bounded consumer slice. No lead-finding integration or outreach was added.
 - **Delivery Phase 6 / Roadmap Phase 6:** Communication + Durable Event Bus — implemented with local SQLite persistence, bounded synchronous delivery, and Phase 4 authorization reuse.
 - **Delivery Phase 7 / Roadmap Phase 7:** Memory + State + Knowledge + Context — implemented with separate local SQLite stores, deterministic bounded retrieval, and transient Context Assembly.
-- **Later roadmap phases:** recovery/observability/resource hardening, outreach, replies, delivery, QA, handoff, and end-to-end workflows — documented only until explicitly requested.
+- **Delivery Phase 8:** Recovery + Observability + Resource Hardening — implemented with deterministic non-authoritative recovery, redacted SQLite traces, and local durable limits/leases/accounting.
+- **Later roadmap phases:** outreach, replies, delivery, QA, handoff, and end-to-end workflows — documented only until explicitly requested.

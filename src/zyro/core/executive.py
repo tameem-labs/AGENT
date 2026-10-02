@@ -12,6 +12,8 @@ from zyro.core.errors import ErrorInfo, InvalidRequestError
 from zyro.core.logging import LogContext, get_logger
 from zyro.core.task import Task, TaskPriority, TaskStatus, VerificationRecord
 from zyro.execution.verification import VerificationOutcome, Verifier
+from zyro.observability.contracts import TraceStatus
+from zyro.observability.service import Observer, TraceContext
 from zyro.runtime.agent_runtime import AgentRuntime, RuntimeExecution
 
 
@@ -74,10 +76,12 @@ class ZyroExecutive:
         runtime: AgentRuntime,
         verifier: Verifier | None = None,
         id_factory: Callable[[], str] | None = None,
+        observer: Observer | None = None,
     ) -> None:
         self._runtime = runtime
         self._verifier = verifier
         self._id_factory = id_factory or (lambda: str(uuid4()))
+        self._observer = observer
 
     def handle(self, request: UserRequest) -> ExecutiveResult:
         """Accept one request and coordinate bounded execution and verification."""
@@ -105,6 +109,8 @@ class ZyroExecutive:
             ),
         )
         logger.info("request accepted and task created")
+        self._observe(task, request.agent_id, "REQUEST_RECEIVED", TraceStatus.STARTED)
+        self._observe(task, request.agent_id, "TASK_CREATED", TraceStatus.SUCCEEDED)
 
         while True:
             last_runtime_result = self._runtime.execute(task, request.agent_id)
@@ -126,6 +132,17 @@ class ZyroExecutive:
             if self._verifier is None:
                 task.mark_verification_unavailable("No verifier was configured for this task.")
                 logger.warning("execution outcome remains unverified")
+                self._observe(
+                    task,
+                    request.agent_id,
+                    "VERIFICATION_COMPLETED",
+                    TraceStatus.UNKNOWN,
+                    instance_id=(
+                        None
+                        if last_runtime_result.instance is None
+                        else last_runtime_result.instance.instance_id
+                    ),
+                )
                 return self._report(
                     task,
                     last_runtime_result,
@@ -136,6 +153,17 @@ class ZyroExecutive:
                     ),
                 )
 
+            self._observe(
+                task,
+                request.agent_id,
+                "VERIFICATION_STARTED",
+                TraceStatus.STARTED,
+                instance_id=(
+                    None
+                    if last_runtime_result.instance is None
+                    else last_runtime_result.instance.instance_id
+                ),
+            )
             try:
                 verification = self._verifier.verify(task, last_runtime_result)
             except Exception as error:
@@ -146,7 +174,43 @@ class ZyroExecutive:
                 )
                 task.mark_verification_failed(failure, "verifier_execution")
                 logger.error("verifier raised an exception")
+                self._observe(
+                    task,
+                    request.agent_id,
+                    "VERIFICATION_COMPLETED",
+                    TraceStatus.FAILED,
+                    instance_id=(
+                        None
+                        if last_runtime_result.instance is None
+                        else last_runtime_result.instance.instance_id
+                    ),
+                    error=failure,
+                )
                 return self._report(task, last_runtime_result, ExecutiveOutcome.FAILED)
+
+            verification_status = (
+                TraceStatus.SUCCEEDED
+                if verification.outcome is VerificationOutcome.VERIFIED
+                else (
+                    TraceStatus.UNKNOWN
+                    if verification.outcome
+                    in {VerificationOutcome.UNAVAILABLE, VerificationOutcome.UNKNOWN}
+                    else TraceStatus.FAILED
+                )
+            )
+            self._observe(
+                task,
+                request.agent_id,
+                "VERIFICATION_COMPLETED",
+                verification_status,
+                instance_id=(
+                    None
+                    if last_runtime_result.instance is None
+                    else last_runtime_result.instance.instance_id
+                ),
+                verification_id=verification.verification_id,
+                error=verification.error,
+            )
 
             if verification.outcome is VerificationOutcome.VERIFIED:
                 task.mark_verified(
@@ -160,6 +224,13 @@ class ZyroExecutive:
                 )
                 task.complete()
                 logger.info("task verified and completed")
+                self._observe(
+                    task,
+                    request.agent_id,
+                    "TASK_COMPLETED",
+                    TraceStatus.SUCCEEDED,
+                    verification_id=verification.verification_id,
+                )
                 return self._report(
                     task,
                     last_runtime_result,
@@ -203,6 +274,39 @@ class ZyroExecutive:
                 verified_at=verification.verified_at,
             )
             return self._report(task, last_runtime_result, ExecutiveOutcome.FAILED)
+
+    def _observe(
+        self,
+        task: Task,
+        agent_id: str,
+        event_type: str,
+        status: TraceStatus,
+        *,
+        instance_id: str | None = None,
+        verification_id: str | None = None,
+        error: ErrorInfo | None = None,
+    ) -> None:
+        if self._observer is None:
+            return
+        try:
+            self._observer.record(
+                event_type,
+                "executive",
+                "handle",
+                status,
+                TraceContext(
+                    task.request_id,
+                    task.task_id,
+                    task.correlation_id,
+                    agent_id=agent_id,
+                    instance_id=instance_id,
+                ),
+                attempt=task.attempt_count,
+                verification_id=verification_id,
+                error_classification=None if error is None else error.error_type,
+            )
+        except Exception:
+            return
 
     @staticmethod
     def _report(
