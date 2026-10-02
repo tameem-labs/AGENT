@@ -12,6 +12,7 @@ EXPECTED_BOUNDARIES = {
     "execution",
     "security",
     "interfaces",
+    "models",
 }
 REQUIRED_PHASE_TWO_MODULES = {
     "src/zyro/core/executive.py",
@@ -22,6 +23,15 @@ REQUIRED_PHASE_TWO_MODULES = {
     "src/zyro/agents/registry.py",
     "src/zyro/runtime/agent_runtime.py",
     "src/zyro/execution/verification.py",
+}
+REQUIRED_PHASE_THREE_MODULES = {
+    "src/zyro/models/contracts.py",
+    "src/zyro/models/provider.py",
+    "src/zyro/models/registry.py",
+    "src/zyro/models/router.py",
+    "src/zyro/tools/contracts.py",
+    "src/zyro/tools/registry.py",
+    "src/zyro/tools/executor.py",
 }
 REQUIRED_ARCHITECTURE_DOCS = {
     "docs/00_MASTER/ZYRO_MASTER_SPEC.md",
@@ -46,6 +56,12 @@ def test_phase_two_contract_modules_remain_separate() -> None:
     missing = [path for path in REQUIRED_PHASE_TWO_MODULES if not (ROOT / path).is_file()]
 
     assert not missing, f"missing Phase 2 contract modules: {sorted(missing)}"
+
+
+def test_phase_three_contract_modules_remain_separate() -> None:
+    missing = [path for path in REQUIRED_PHASE_THREE_MODULES if not (ROOT / path).is_file()]
+
+    assert not missing, f"missing Phase 3 contract modules: {sorted(missing)}"
 
 
 def test_architecture_source_documents_remain_present() -> None:

@@ -1,1 +1,1 @@
-"""ZYRO tools boundary."""
+"""Bounded tool definitions, registry, handlers, and execution boundary."""

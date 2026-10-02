@@ -2,15 +2,15 @@
 
 ZYRO is specified as a personal Executive AI, computer agent, and AI organization. The user will interact with one canonical Executive while internal components coordinate domains, agents, models, tools, workflows, state, knowledge, security, execution, and verification.
 
-This repository has completed **Phase 2 — Executive Core + Task + Agent Runtime** in the delivery sequence. It implements one orchestration entry point, guarded Task lifecycles, separate Agent Definition and Agent Instance contracts, bounded agent handlers, structured runtime outcomes, finite retries, and independent basic verification. It does **not** implement model providers, tools, external APIs, memory, or domain business logic.
+This repository has completed **Phase 3 — Model Router + Tool System** in the delivery sequence. It implements the Phase 2 Executive/Task/Agent runtime plus provider-independent model requirements, deterministic model routing, replaceable provider contracts, bounded tool definitions/registration/execution, structured failures, and runtime service boundaries. It does **not** include a real external model adapter, permission/approval engine, memory, workflows, or domain business logic.
 
-> Naming note: the existing architecture roadmap calls this Executive/Task/Agent work “Phase 1,” while the delivery sequence calls it “Phase 2.” The next delivery milestone, “Phase 3 — Model Router + Tool System,” corresponds to roadmap Phase 2. See `PROGRESS.md` for actual implementation status.
+> Naming note: the existing architecture roadmap calls Model Router + Tool Registry “Phase 2,” while the delivery sequence calls it “Phase 3.” The next delivery milestone, “Phase 4 — Permission + Approval + Verification,” corresponds to roadmap Phase 3. See `PROGRESS.md` for actual implementation status.
 
 ## Requirements
 
 - Python 3.11 or newer
 - `pip`
-- No API key, database, container, or external service is needed for the foundation
+- No API key, database, container, network access, or external service is needed for development/tests
 
 ## Development setup
 
@@ -29,13 +29,16 @@ python -m zyro
 
 The command initializes safe configuration and logging, then exits. It does not contact an AI provider. Application code composes `ZyroExecutive` from an `AgentRegistry`, `AgentRuntime`, bounded `AgentHandler` implementations, and an optional independent `Verifier`. Without a verifier, successful execution is explicitly reported as `SUCCEEDED_UNVERIFIED`; it is never promoted to `DONE` or `VERIFIED`.
 
-Phase 2 contracts are located at:
+Core contracts are located at:
 
-- `src/zyro/core/task.py` — Task lifecycle and verification records
-- `src/zyro/core/executive.py` — canonical request/orchestration boundary
+- `src/zyro/core/` — Executive, Task lifecycle, shared errors/risk, configuration, and logging
 - `src/zyro/agents/` — definitions, instances, handlers, and registry
-- `src/zyro/runtime/agent_runtime.py` — one bounded execution attempt
-- `src/zyro/execution/verification.py` — independent verification protocol
+- `src/zyro/models/` — model requirements/definitions/results, provider registry, model registry, and deterministic router
+- `src/zyro/tools/` — bounded definitions/calls/results, registry, schema validation, and executor
+- `src/zyro/runtime/agent_runtime.py` — one bounded agent attempt with optional model/tool service boundaries
+- `src/zyro/execution/verification.py` — independent structural verification protocol
+
+Providers and tools are registered programmatically with non-secret definitions. The repository ships no product provider adapter and requires no API key. Deterministic providers and tools under `tests/` are test infrastructure only. Model-requested tool calls are data, not authorization: the runtime never executes them automatically. Until Phase 4 authority infrastructure exists, non-`AUTOMATIC` tools fail closed with `AUTHORIZATION_REQUIRED`.
 
 ## Quality checks
 

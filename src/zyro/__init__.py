@@ -1,4 +1,4 @@
-"""ZYRO core package with a provider-independent Executive and agent runtime."""
+"""ZYRO Executive runtime with provider-independent model and bounded tool systems."""
 
 from zyro.core.executive import ExecutiveResult, UserRequest, ZyroExecutive
 from zyro.runtime.bootstrap import RuntimeContext, initialize_runtime
@@ -10,4 +10,4 @@ __all__ = [
     "ZyroExecutive",
     "initialize_runtime",
 ]
-__version__ = "0.2.0"
+__version__ = "0.3.0"

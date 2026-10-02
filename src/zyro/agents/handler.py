@@ -2,10 +2,24 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from zyro.core.errors import ErrorInfo
+from zyro.models.contracts import (
+    ModelInvoker,
+    ModelRequest,
+    ModelRequirements,
+    ModelResult,
+    ModelResultStatus,
+)
+from zyro.tools.contracts import (
+    ToolCall,
+    ToolInvoker,
+    ToolResult,
+    ToolResultStatus,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,29 +31,162 @@ class ExecutionContext:
     instance_id: str
     goal: str
     attempt: int
+    model_invoker: ModelInvoker | None = None
+    tool_invoker: ToolInvoker | None = None
+    default_model_requirements: ModelRequirements | None = None
+
+    def invoke_model(
+        self,
+        prompt: str,
+        requirements: ModelRequirements | None = None,
+        *,
+        system_instruction: str | None = None,
+        structured_output_schema: Mapping[str, Any] | None = None,
+    ) -> ModelResult:
+        """Request capabilities through the router without naming a provider/model."""
+        selected_requirements = requirements or self.default_model_requirements
+        if selected_requirements is None:
+            return self._model_boundary_failure(
+                ModelResultStatus.INVALID_REQUEST,
+                "model_requirements_missing",
+                "No provider-independent model requirements were supplied.",
+            )
+        model_request = ModelRequest(
+            prompt=prompt,
+            requirements=selected_requirements,
+            request_id=self.request_id,
+            task_id=self.task_id,
+            agent_id=self.agent_id,
+            instance_id=self.instance_id,
+            correlation_id=self.correlation_id,
+            system_instruction=system_instruction,
+            structured_output_schema=structured_output_schema,
+        )
+        validation_error = model_request.validation_error()
+        if validation_error is not None:
+            return self._model_boundary_failure(
+                ModelResultStatus.INVALID_REQUEST,
+                "invalid_model_request",
+                validation_error,
+            )
+        if self.model_invoker is None:
+            return self._model_boundary_failure(
+                ModelResultStatus.PROVIDER_UNAVAILABLE,
+                "model_router_unavailable",
+                "No model router is attached to this agent runtime.",
+            )
+        return self.model_invoker.invoke(model_request)
+
+    def execute_tool(self, tool_id: str, arguments: Mapping[str, Any]) -> ToolResult:
+        """Request one bounded tool call; model suggestions are never auto-executed."""
+        call = ToolCall(
+            tool_id=tool_id,
+            arguments=arguments,
+            request_id=self.request_id,
+            task_id=self.task_id,
+            agent_id=self.agent_id,
+            instance_id=self.instance_id,
+            correlation_id=self.correlation_id,
+        )
+        validation_error = call.validation_error()
+        if validation_error is not None:
+            return ToolResult(
+                status=ToolResultStatus.INVALID_INPUT,
+                tool_id=tool_id,
+                request_id=self.request_id,
+                task_id=self.task_id,
+                agent_id=self.agent_id,
+                instance_id=self.instance_id,
+                correlation_id=self.correlation_id,
+                error=ErrorInfo(
+                    code="invalid_tool_call",
+                    message=validation_error,
+                    error_type="InvalidToolCall",
+                ),
+            )
+        if self.tool_invoker is None:
+            return ToolResult(
+                status=ToolResultStatus.EXECUTION_FAILURE,
+                tool_id=tool_id,
+                request_id=self.request_id,
+                task_id=self.task_id,
+                agent_id=self.agent_id,
+                instance_id=self.instance_id,
+                correlation_id=self.correlation_id,
+                error=ErrorInfo(
+                    code="tool_executor_unavailable",
+                    message="No tool executor is attached to this agent runtime.",
+                    error_type="ToolExecutorUnavailable",
+                ),
+            )
+        return self.tool_invoker.execute(call)
+
+    def _model_boundary_failure(
+        self,
+        status: ModelResultStatus,
+        code: str,
+        message: str,
+    ) -> ModelResult:
+        return ModelResult(
+            status=status,
+            request_id=self.request_id,
+            task_id=self.task_id,
+            agent_id=self.agent_id,
+            instance_id=self.instance_id,
+            correlation_id=self.correlation_id,
+            error=ErrorInfo(code=code, message=message, error_type="ModelBoundaryFailure"),
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class AgentExecution:
-    """Structured output of bounded agent logic."""
+    """Structured output of bounded agent logic and its model/tool evidence."""
 
     succeeded: bool
     value: Any | None = None
     error: ErrorInfo | None = None
+    model_results: tuple[ModelResult, ...] = ()
+    tool_results: tuple[ToolResult, ...] = ()
 
     def __post_init__(self) -> None:
         if self.succeeded and self.error is not None:
             raise ValueError("a successful execution cannot contain an error")
         if not self.succeeded and self.error is None:
             raise ValueError("a failed execution must contain an error")
+        if self.succeeded and any(not result.succeeded for result in self.model_results):
+            raise ValueError("successful agent execution cannot contain failed model results")
+        if self.succeeded and any(not result.succeeded for result in self.tool_results):
+            raise ValueError("successful agent execution cannot contain failed tool results")
 
     @classmethod
-    def success(cls, value: Any) -> AgentExecution:
-        return cls(succeeded=True, value=value)
+    def success(
+        cls,
+        value: Any,
+        *,
+        model_results: tuple[ModelResult, ...] = (),
+        tool_results: tuple[ToolResult, ...] = (),
+    ) -> AgentExecution:
+        return cls(
+            succeeded=True,
+            value=value,
+            model_results=model_results,
+            tool_results=tool_results,
+        )
 
     @classmethod
-    def failure(cls, error: ErrorInfo) -> AgentExecution:
-        return cls(succeeded=False, error=error)
+    def failure(
+        cls,
+        error: ErrorInfo,
+        *,
+        model_results: tuple[ModelResult, ...] = (),
+        tool_results: tuple[ToolResult, ...] = (),
+    ) -> AgentExecution:
+        return cls(
+            succeeded=False,
+            error=error,
+            model_results=model_results,
+            tool_results=tool_results,
+        )
 
 
 class AgentHandler(Protocol):

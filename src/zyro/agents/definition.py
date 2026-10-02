@@ -4,17 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from enum import StrEnum
 from types import MappingProxyType
 from typing import Any
 
 from zyro.core.errors import InvalidAgentError
-
-
-class RiskClass(StrEnum):
-    AUTOMATIC = "AUTOMATIC"
-    POLICY_CONTROLLED = "POLICY_CONTROLLED"
-    STRICT_AUTHORIZATION = "STRICT_AUTHORIZATION"
+from zyro.core.risk import RiskClass
+from zyro.models.contracts import ModelRequirements
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +29,7 @@ class AgentDefinition:
     output_contract: Mapping[str, Any] = field(default_factory=dict)
     context_requirements: tuple[str, ...] = ()
     communication_rules: tuple[str, ...] = ()
-    model_requirements: tuple[str, ...] = ()
+    model_requirements: ModelRequirements | None = None
     verification_requirements: tuple[str, ...] = ()
     resource_limits: Mapping[str, int] = field(default_factory=dict)
 
@@ -52,3 +47,6 @@ class AgentDefinition:
             raise InvalidAgentError("resource limits cannot be negative")
         object.__setattr__(self, "output_contract", MappingProxyType(dict(self.output_contract)))
         object.__setattr__(self, "resource_limits", MappingProxyType(dict(self.resource_limits)))
+
+
+__all__ = ["AgentDefinition", "RiskClass"]

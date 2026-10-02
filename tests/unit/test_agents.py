@@ -3,6 +3,7 @@ import pytest
 from zyro.agents.definition import AgentDefinition, RiskClass
 from zyro.agents.instance import AgentInstance, AgentInstanceStatus
 from zyro.core.errors import ErrorInfo, InvalidAgentError, InvalidAgentTransition
+from zyro.models.contracts import ModelRequirements
 
 
 def make_definition() -> AgentDefinition:
@@ -20,7 +21,7 @@ def make_definition() -> AgentDefinition:
         output_contract={"type": "mapping"},
         context_requirements=("task",),
         communication_rules=("return structured output",),
-        model_requirements=(),
+        model_requirements=ModelRequirements(task_type="echo"),
         verification_requirements=("runtime structure",),
         resource_limits={"max_attempts": 2},
     )
