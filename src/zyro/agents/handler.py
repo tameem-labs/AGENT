@@ -6,7 +6,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from zyro.context.contracts import (
+    AssembledContext,
+    ContextBudget,
+    ContextRequest,
+    StateReference,
+)
 from zyro.core.errors import ErrorInfo
+from zyro.core.scope import ResourceScope
 from zyro.models.contracts import (
     ModelInvoker,
     ModelRequest,
@@ -20,6 +27,10 @@ from zyro.tools.contracts import (
     ToolResult,
     ToolResultStatus,
 )
+
+
+class ContextProvider(Protocol):
+    def assemble(self, request: ContextRequest) -> AssembledContext: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +47,42 @@ class ExecutionContext:
     default_model_requirements: ModelRequirements | None = None
     requester_id: str | None = None
     pending_approval_id: str | None = None
+    context_provider: ContextProvider | None = None
+
+    def request_context(
+        self,
+        scope: ResourceScope,
+        query: str,
+        *,
+        task_data: Mapping[str, Any] | None = None,
+        state_references: tuple[StateReference, ...] = (),
+        budget: ContextBudget | None = None,
+    ) -> AssembledContext:
+        """Request a bounded view; the agent receives no direct store access."""
+        if self.context_provider is None or self.requester_id is None:
+            return AssembledContext(
+                self.task_id,
+                (),
+                0,
+                False,
+                ErrorInfo(
+                    "context_provider_unavailable",
+                    "No Context Assembler is attached to this runtime.",
+                    "ContextUnavailable",
+                ),
+            )
+        return self.context_provider.assemble(
+            ContextRequest(
+                requester_id=self.requester_id,
+                task_id=self.task_id,
+                scope=scope,
+                query=query,
+                current_instruction=self.goal,
+                task_data={} if task_data is None else task_data,
+                state_references=state_references,
+                budget=budget or ContextBudget(),
+            )
+        )
 
     def invoke_model(
         self,

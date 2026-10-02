@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from uuid import uuid4
 
-from zyro.agents.handler import AgentExecution, ExecutionContext
+from zyro.agents.handler import AgentExecution, ContextProvider, ExecutionContext
 from zyro.agents.instance import AgentInstance
 from zyro.agents.registry import AgentRegistry
 from zyro.core.errors import ErrorInfo, MissingAgentError
@@ -31,11 +31,13 @@ class AgentRuntime:
         instance_id_factory: Callable[[], str] | None = None,
         model_invoker: ModelInvoker | None = None,
         tool_invoker: ToolInvoker | None = None,
+        context_provider: ContextProvider | None = None,
     ) -> None:
         self._registry = registry
         self._instance_id_factory = instance_id_factory or (lambda: str(uuid4()))
         self._model_invoker = model_invoker
         self._tool_invoker = tool_invoker
+        self._context_provider = context_provider
 
     def execute(self, task: Task, agent_id: str) -> RuntimeExecution:
         """Execute exactly one task attempt; invalid duplicate attempts are rejected."""
@@ -73,6 +75,7 @@ class AgentRuntime:
             default_model_requirements=registered.definition.model_requirements,
             requester_id=task.owner,
             pending_approval_id=task.pending_approval_id,
+            context_provider=self._context_provider,
         )
         logger = get_logger(
             "agent_runtime",
