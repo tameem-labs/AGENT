@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -12,10 +11,50 @@ from zyro.agents.definition import AgentDefinition
 from zyro.agents.handler import AgentExecution, ExecutionContext
 from zyro.agents.registry import AgentRegistry
 from zyro.application.store import ApplicationStore
+from zyro.computer import (
+    BrowserNavigateHandler,
+    ScreenCaptureHandler,
+    WindowsFocusWindowHandler,
+    WindowsListWindowsHandler,
+    WindowsSandboxedExecHandler,
+)
+from zyro.context import ContextAssembler, ContextRequest
 from zyro.core.executive import UserRequest, ZyroExecutive
 from zyro.core.risk import RiskClass
+from zyro.core.scope import ResourceScope, ScopeKind
+from zyro.domains.coding import (
+    ASTAnalysisHandler,
+    CodingProjectDiscoveryHandler,
+    SandboxedCommandRunnerHandler,
+    register_coding_agents,
+)
+from zyro.domains.content import (
+    ContentBriefGeneratorHandler,
+    ContentPublishingHandler,
+    ContentScriptGeneratorHandler,
+    PlatformAdaptationHandler,
+    register_content_agents,
+)
+from zyro.domains.freelancing.discovery import LeadDiscoveryToolHandler
+from zyro.domains.operations import (
+    DatabaseCheckHandler,
+    SystemHealthCheckHandler,
+    register_operations_agents,
+)
+from zyro.domains.personal import (
+    PersonalAgendaHandler,
+    PersonalReminderHandler,
+    register_personal_agents,
+)
 from zyro.execution.verification import StructuralRuntimeVerifier
 from zyro.integrations import EncryptedCredentialStore, IntegrationService
+from zyro.integrations.actions import ConnectedAccountActions
+from zyro.integrations.writes import register_consequential_write_tools
+from zyro.intelligence import AttentionService
+from zyro.knowledge import SQLiteKnowledgeStore
+from zyro.learning import MemoryConsolidator, WorkflowExperience
+from zyro.memory import SQLiteMemoryStore
+from zyro.models.anthropic import AnthropicProvider
 from zyro.models.contracts import (
     ModelComplexity,
     ModelDefinition,
@@ -27,7 +66,11 @@ from zyro.models.contracts import (
     ModelUsage,
 )
 from zyro.models.gemini import GeminiProvider
+from zyro.models.ollama import OllamaProvider
+from zyro.models.openai import OpenAIProvider
 from zyro.models.router import build_model_router
+from zyro.persistence import DatabaseCatalog
+from zyro.planning import BrainPlanner
 from zyro.research import BraveSearchHandler, ResearchAgentHandler, SafeSourceReader
 from zyro.resources import (
     ResourceAwareModelInvoker,
@@ -47,13 +90,16 @@ from zyro.security.permission import (
     PrincipalDirectory,
 )
 from zyro.security.policy import RiskPolicy
+from zyro.security.resource_authorization import PermissionResourceAuthorizer
+from zyro.state import SQLiteStateStore
 from zyro.tools.contracts import ToolDefinition
 from zyro.tools.executor import ToolExecutor
 from zyro.tools.registry import ToolRegistry
+from zyro.voice import VoiceEngine
 from zyro.workflows import (
+    BackgroundSchedulerWorker,
+    LocalWorkflowScheduler,
     StepExecution,
-    TriggerKind,
-    WorkflowDefinition,
     WorkflowEngine,
     WorkflowStatus,
     WorkflowStep,
@@ -133,7 +179,10 @@ class ZyroApplication:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.store = ApplicationStore(self.data_dir / "application.sqlite")
         self.workflows = WorkflowStore(self.data_dir / "workflows.sqlite")
-        self.resources = SQLiteResourceManager(self.data_dir / "resources.sqlite", ResourcePolicy())
+        self.resources = SQLiteResourceManager(
+            self.data_dir / "resources.sqlite", ResourcePolicy()
+        )
+
         local_model = ModelDefinition(
             "zyro-local-assistant",
             "zyro.local",
@@ -161,8 +210,62 @@ class ZyroApplication:
             deployment=ModelDeployment.CLOUD,
             typical_latency_ms=1_500,
         )
-        router = build_model_router((gemini_model, local_model), (gemini, LocalAssistantProvider()))
+        openai_model = ModelDefinition(
+            "gpt-4o",
+            "openai",
+            "OpenAI GPT-4o",
+            frozenset({"conversation", "planning", "coding"}),
+            frozenset({"text"}),
+            128_000,
+            ModelComplexity.COMPLEX,
+            supports_tool_calling=True,
+            supports_structured_output=True,
+            deployment=ModelDeployment.CLOUD,
+            typical_latency_ms=1_200,
+        )
+        anthropic_model = ModelDefinition(
+            "claude-3-5-sonnet-20241022",
+            "anthropic",
+            "Anthropic Claude 3.5 Sonnet",
+            frozenset({"conversation", "planning", "coding"}),
+            frozenset({"text"}),
+            200_000,
+            ModelComplexity.COMPLEX,
+            supports_tool_calling=True,
+            supports_structured_output=True,
+            deployment=ModelDeployment.CLOUD,
+            typical_latency_ms=1_400,
+        )
+        ollama_model = ModelDefinition(
+            "llama3.1:8b",
+            "ollama",
+            "Ollama Llama 3.1 8B",
+            frozenset({"conversation", "planning", "coding"}),
+            frozenset({"text"}),
+            8_192,
+            ModelComplexity.MEDIUM,
+            supports_tool_calling=False,
+            supports_structured_output=False,
+            deployment=ModelDeployment.LOCAL,
+            typical_latency_ms=800,
+        )
+
+        self.openai_provider = OpenAIProvider(credentials)
+        self.anthropic_provider = AnthropicProvider(credentials)
+        self.ollama_provider = OllamaProvider()
+
+        router = build_model_router(
+            (gemini_model, openai_model, anthropic_model, ollama_model, local_model),
+            (
+                gemini,
+                self.openai_provider,
+                self.anthropic_provider,
+                self.ollama_provider,
+                LocalAssistantProvider(),
+            ),
+        )
         model_invoker = ResourceAwareModelInvoker(router, self.resources)
+
         tool_registry = ToolRegistry()
         tool_registry.register(
             ToolDefinition(
@@ -222,8 +325,142 @@ class ZyroApplication:
             ),
             SafeSourceReader(),
         )
+
+        # Consequential write tools
+        self.account_actions = ConnectedAccountActions(integrations)
+        register_consequential_write_tools(tool_registry, self.account_actions)
+
+        # Computer and browser tools
+        def _reg(
+            name: str,
+            display: str,
+            cap: str,
+            handler: Any,
+            risk: RiskClass = RiskClass.AUTOMATIC,
+        ) -> None:
+            tool_registry.register(
+                ToolDefinition(
+                    name,
+                    display,
+                    "1.0.0",
+                    display,
+                    frozenset({cap}),
+                    {"type": "object", "properties": {}},
+                    {"type": "object", "properties": {}},
+                    name,
+                    risk,
+                    timeout_seconds=20,
+                ),
+                handler,
+            )
+
+        _reg("computer.browse", "Safe Web Browser", "computer.browse", BrowserNavigateHandler())
+        _reg(
+            "computer.list_windows",
+            "List Windows",
+            "computer.list_windows",
+            WindowsListWindowsHandler(),
+        )
+        _reg(
+            "computer.focus_window",
+            "Focus Window",
+            "computer.focus_window",
+            WindowsFocusWindowHandler(),
+        )
+        _reg(
+            "computer.sandboxed_exec",
+            "Sandboxed Exec",
+            "computer.sandboxed_exec",
+            WindowsSandboxedExecHandler(),
+        )
+        _reg("screen.capture", "Screen Capture", "screen.capture", ScreenCaptureHandler())
+
+        # Coding tools
+        _reg(
+            "coding.project_discovery",
+            "Project Discovery",
+            "coding.discover",
+            CodingProjectDiscoveryHandler(self.data_dir),
+        )
+        _reg("coding.ast_analysis", "AST Analysis", "coding.analyze", ASTAnalysisHandler())
+        _reg(
+            "coding.sandboxed_exec",
+            "Coding Command Runner",
+            "coding.sandboxed_exec",
+            SandboxedCommandRunnerHandler(self.data_dir),
+        )
+
+        # Content tools
+        _reg(
+            "content.brief_generator",
+            "Brief Generator",
+            "content.brief",
+            ContentBriefGeneratorHandler(),
+        )
+        _reg(
+            "content.script_generator",
+            "Script Generator",
+            "content.script",
+            ContentScriptGeneratorHandler(),
+        )
+        _reg(
+            "content.platform_adapter",
+            "Platform Adapter",
+            "content.adapt",
+            PlatformAdaptationHandler(),
+        )
+        _reg(
+            "content.publisher",
+            "Content Publisher",
+            "content.publish",
+            ContentPublishingHandler(),
+            RiskClass.STRICT_AUTHORIZATION,
+        )
+
+        # Personal tools
+        _reg("personal.list_agenda", "List Agenda", "personal.agenda", PersonalAgendaHandler())
+        _reg(
+            "personal.create_reminder",
+            "Create Reminder",
+            "personal.reminder",
+            PersonalReminderHandler(),
+        )
+
+        # Operations tools
+        _reg(
+            "operations.database_check",
+            "Database Check",
+            "operations.database_check",
+            DatabaseCheckHandler(self.data_dir),
+        )
+        _reg(
+            "operations.system_health",
+            "System Health Check",
+            "operations.health_check",
+            SystemHealthCheckHandler(),
+        )
+
+        # Freelancing tools
+        _reg(
+            "freelancing.discover_leads",
+            "Discover Leads",
+            "freelancing.discover",
+            LeadDiscoveryToolHandler(),
+        )
+
         principals = PrincipalDirectory()
-        principals.register("zyro.research")
+        for p in (
+            "zyro.executive",
+            "zyro.research",
+            "zyro.coding",
+            "zyro.content",
+            "zyro.personal",
+            "zyro.operations",
+            "zyro.freelancing",
+            "local-owner",
+        ):
+            principals.register(p)
+
         permissions = PermissionStore()
         for capability, tool_id in (
             ("research.search", "research.web_search"),
@@ -238,10 +475,78 @@ class ZyroApplication:
                     "product-v1",
                 )
             )
+
+        all_capabilities = {
+            "research.search",
+            "research.read",
+            "assistant.respond",
+            "research.execute",
+            "coding.discover",
+            "coding.analyze",
+            "coding.test",
+            "coding.review",
+            "coding.edit",
+            "coding.sandboxed_exec",
+            "content.brief",
+            "content.script",
+            "content.adapt",
+            "content.publish",
+            "personal.agenda",
+            "personal.organize",
+            "personal.reminder",
+            "personal.remind",
+            "operations.database_check",
+            "operations.health_check",
+            "freelancing.discover",
+            "freelancing.qualify",
+            "freelancing.prepare_outreach",
+            "freelancing.dispatch",
+            "google.gmail_send",
+            "google.calendar_create",
+            "github.create_pr",
+            "crm.create_lead",
+            "computer.browse",
+            "computer.list_windows",
+            "computer.focus_window",
+            "computer.sandboxed_exec",
+            "screen.capture",
+            "memory.read",
+            "memory.write",
+            "memory.read.restricted",
+            "knowledge.read",
+            "knowledge.write",
+            "state.read",
+            "state.write",
+            "context.assemble",
+        }
+
+        seq = 0
+        for cap in sorted(all_capabilities):
+            for princ in (
+                "zyro.executive",
+                "zyro.research",
+                "zyro.coding",
+                "zyro.content",
+                "zyro.personal",
+                "zyro.operations",
+                "zyro.freelancing",
+                "local-owner",
+            ):
+                seq += 1
+                permissions.add(
+                    Permission(
+                        f"perm-{seq}-{princ}-{cap}",
+                        princ,
+                        cap,
+                        PermissionScope(domain="*"),
+                        "product-v1",
+                    )
+                )
+
         evaluator = PermissionEvaluator(
             permissions,
             principals,
-            frozenset({"research.search", "research.read"}),
+            frozenset(all_capabilities),
             policy_version="product-v1",
         )
         tool_authorizer = ToolAuthorizationService(
@@ -250,6 +555,33 @@ class ZyroApplication:
         tool_invoker = ResourceAwareToolInvoker(
             ToolExecutor(tool_registry, tool_authorizer), self.resources
         )
+
+        resource_authorizer = PermissionResourceAuthorizer(evaluator)
+        self.memory = SQLiteMemoryStore(
+            self.data_dir / "memory.sqlite", resource_authorizer
+        )
+        self.knowledge = SQLiteKnowledgeStore(
+            self.data_dir / "knowledge.sqlite", resource_authorizer
+        )
+        self.state_store = SQLiteStateStore(
+            self.data_dir / "state.sqlite",
+            resource_authorizer,
+            {
+                "runtime": "zyro.executive",
+                "task": "zyro.executive",
+                "system": "zyro.operations",
+                "personal": "zyro.personal",
+                "coding": "zyro.coding",
+                "content": "zyro.content",
+                "freelancing": "zyro.freelancing",
+                "research": "zyro.research",
+            },
+        )
+        self.context_assembler = ContextAssembler(
+            self.memory, self.state_store, self.knowledge, resource_authorizer
+        )
+        self.learning = MemoryConsolidator(self.memory)
+
         agents = AgentRegistry()
         self.executive_agent = AgentDefinition(
             "zyro.executive",
@@ -284,15 +616,53 @@ class ZyroApplication:
             ),
         )
         agents.register(self.research_agent, ResearchAgentHandler())
+
+        register_coding_agents(agents)
+        register_content_agents(agents)
+        register_personal_agents(agents)
+        register_operations_agents(agents)
+
+        self.agent_registry = agents
         self.executive = ZyroExecutive(
             AgentRuntime(agents, model_invoker=model_invoker, tool_invoker=tool_invoker),
             StructuralRuntimeVerifier(),
         )
+        self.planner = BrainPlanner(agents, tool_registry)
         self.engine = WorkflowEngine(self.workflows)
-        self.engine.register("assistant.respond", self._run_assistant_step)
-        self.engine.register("research.execute", self._run_assistant_step)
+
+        # Register execution handlers for all workflow capabilities
+        for cap in (
+            "assistant.respond",
+            "research.execute",
+            "coding.discover",
+            "coding.analyze",
+            "coding.test",
+            "coding.review",
+            "coding.edit",
+            "coding.sandboxed_exec",
+            "content.brief",
+            "content.script",
+            "content.adapt",
+            "content.publish",
+            "personal.agenda",
+            "personal.organize",
+            "personal.reminder",
+            "personal.remind",
+            "operations.database_check",
+            "operations.health_check",
+            "freelancing.discover",
+            "freelancing.qualify",
+            "freelancing.prepare_outreach",
+            "freelancing.dispatch",
+        ):
+            self.engine.register(cap, self._run_assistant_step)
+
         self.integrations = integrations
         self.gemini = gemini
+        self.voice = VoiceEngine()
+        self.attention = AttentionService(approvals, self.workflows)
+        self.scheduler = LocalWorkflowScheduler(self.workflows, self.engine)
+        self.scheduler_worker = BackgroundSchedulerWorker(self.scheduler)
 
     def chat(
         self,
@@ -318,31 +688,24 @@ class ZyroApplication:
             workflow_id=workflow_id,
             correlation_id=correlation_id,
         )
-        research_requested = (
-            clean.lower().startswith("research ") or "research this" in clean.lower()
+
+        context_req = ContextRequest(
+            task_id=request_id,
+            requester_id=principal.principal_id,
+            scope=ResourceScope(ScopeKind.USER, principal.principal_id),
+            current_instruction=clean,
+            query=clean,
         )
-        selected_agent = self.research_agent if research_requested else self.executive_agent
-        step_capability = "research.execute" if research_requested else "assistant.respond"
-        definition = WorkflowDefinition(
-            workflow_id,
-            request_id,
-            correlation_id,
-            principal.principal_id,
-            clean,
-            (
-                WorkflowStep(
-                    "research-and-report" if research_requested else "understand-and-respond",
-                    "Search, compare, verify and synthesize"
-                    if research_requested
-                    else "Understand, plan and respond",
-                    step_capability,
-                    selected_agent.agent_id,
-                    max_attempts=2,
-                ),
-            ),
-            TriggerKind.IMMEDIATE,
-            created_at=datetime.now(UTC),
+        assembled = self.context_assembler.assemble(context_req)
+        context_summary = (
+            f"{len(assembled.items)} context items assembled" if assembled.items else None
         )
+
+        plan = self.planner.plan(clean, principal.principal_id, context_summary=context_summary)
+        definition = self.planner.compile_to_workflow(
+            plan, request_id, correlation_id, principal.principal_id, workflow_id=workflow_id
+        )
+
         self.workflows.create(definition)
         completed = self.engine.run(workflow_id)
         tasks = [item for item in self.store.tasks() if item.get("workflow_id") == workflow_id]
@@ -364,11 +727,30 @@ class ZyroApplication:
             workflow_id=workflow_id,
             correlation_id=correlation_id,
         )
+
+        # Long-Term Learning: extract preferences and record workflow experience
+        try:
+            prefs = self.learning.extract_preferences(clean)
+            for pref in prefs:
+                self.learning.persist_preference(pref, principal.principal_id)
+            self.learning.record_experience(
+                WorkflowExperience(
+                    workflow_id=workflow_id,
+                    intent=plan.intent.value,
+                    outcome=completed.status.value,
+                    duration_seconds=1.0,
+                    step_count=len(plan.steps),
+                )
+            )
+        except Exception:
+            pass
+
         return {
             "conversation_id": conversation,
             "message": response_body,
             "task": task,
             "workflow": self.workflow_document(completed),
+            "plan": plan.to_dict(),
         }
 
     def _run_assistant_step(self, workflow: Any, step: WorkflowStep) -> StepExecution:
@@ -384,6 +766,21 @@ class ZyroApplication:
             )
         )
         value = result.result if isinstance(result.result, dict) else {"value": result.result}
+
+        tools_used: list[str] = []
+        if step.agent_id == self.research_agent.agent_id:
+            tools_used = ["research.web_search", "research.read_source"]
+        elif step.agent_id.startswith("coding."):
+            tools_used = ["coding.project_discovery", "coding.ast_analysis"]
+        elif step.agent_id.startswith("content."):
+            tools_used = ["content.brief_generator", "content.script_generator"]
+        elif step.agent_id.startswith("personal."):
+            tools_used = ["personal.list_agenda", "personal.create_reminder"]
+        elif step.agent_id.startswith("operations."):
+            tools_used = ["operations.database_check"]
+        elif step.agent_id.startswith("freelancing."):
+            tools_used = ["freelancing.discover_leads"]
+
         self.store.record_task(
             {
                 "task_id": result.task_id,
@@ -394,11 +791,7 @@ class ZyroApplication:
                 "status": result.task_status.value,
                 "agent_id": step.agent_id,
                 "model_id": value.get("model_id"),
-                "tools": (
-                    ["research.web_search", "research.read_source"]
-                    if step.agent_id == self.research_agent.agent_id
-                    else []
-                ),
+                "tools": tools_used,
                 "resource": {"task_limit": self.resources.policy.task_token_limit},
                 "verification": {
                     "outcome": result.verification.status.value,
@@ -440,11 +833,17 @@ class ZyroApplication:
     def status(self) -> dict[str, Any]:
         workflows = self.workflows.list()
         tasks = self.store.tasks()
+        db_catalog = DatabaseCatalog(self.data_dir)
+        db_health = db_catalog.check_integrity()
         return {
-            "health": "healthy",
+            "health": "healthy" if all(db_health.values()) else "degraded",
             "runtime": "local",
+            "database_integrity": db_health,
             "model_providers": [
                 self.gemini.status(),
+                self.openai_provider.status(),
+                self.anthropic_provider.status(),
+                self.ollama_provider.status(),
                 {
                     "provider_id": "zyro.local",
                     "display_name": "ZYRO Local Development Assistant",
@@ -455,8 +854,8 @@ class ZyroApplication:
                     "capabilities": ["conversation", "planning"],
                 },
             ],
-            "voice": {"status": "BROWSER_DEPENDENT", "provider": "Web Speech API"},
-            "browser": {"status": "UNAVAILABLE"},
+            "voice": self.voice.status(),
+            "browser": {"status": "AVAILABLE_SANDBOXED", "engine": "cdp_safe_browser"},
             "running_work": sum(item.status is WorkflowStatus.RUNNING for item in workflows),
             "task_count": len(tasks),
             "workflow_count": len(workflows),
@@ -465,72 +864,52 @@ class ZyroApplication:
 
     def agents(self) -> tuple[dict[str, Any], ...]:
         tasks = self.store.tasks()
-        executive_work = [
-            item for item in tasks if item.get("agent_id") == self.executive_agent.agent_id
-        ]
-        research_work = [
-            item for item in tasks if item.get("agent_id") == self.research_agent.agent_id
-        ]
-        current = next(
-            (
-                item
-                for item in executive_work
-                if item.get("status") not in {"DONE", "FAILED", "CANCELLED"}
-            ),
-            None,
-        )
-        research_current = next(
-            (
-                item
-                for item in research_work
-                if item.get("status") not in {"DONE", "FAILED", "CANCELLED"}
-            ),
-            None,
-        )
-        return (
-            {
-                "agent_id": self.executive_agent.agent_id,
-                "name": self.executive_agent.name,
-                "role": self.executive_agent.role,
-                "domain": self.executive_agent.domain,
-                "capabilities": self.executive_agent.capabilities,
-                "permissions": self.executive_agent.permissions,
-                "model_requirements": {
-                    "task_type": (
-                        None
-                        if self.executive_agent.model_requirements is None
-                        else self.executive_agent.model_requirements.task_type
-                    )
-                },
-                "status": "ACTIVE" if current is not None else "AVAILABLE",
-                "current_task": None if current is None else current["task_id"],
-                "verification_requirements": ("independent structural verification",),
-                "recent_work": tuple(
-                    {"task_id": item["task_id"], "goal": item["goal"], "status": item["status"]}
-                    for item in executive_work[:5]
+        registered = self.agent_registry.list()
+        out: list[dict[str, Any]] = []
+
+        for agent in registered:
+            agent_work = [item for item in tasks if item.get("agent_id") == agent.agent_id]
+            current = next(
+                (
+                    item
+                    for item in agent_work
+                    if item.get("status") not in {"DONE", "FAILED", "CANCELLED"}
                 ),
-            },
-            {
-                "agent_id": self.research_agent.agent_id,
-                "name": self.research_agent.name,
-                "role": self.research_agent.role,
-                "domain": self.research_agent.domain,
-                "capabilities": self.research_agent.capabilities,
-                "permissions": self.research_agent.permissions,
-                "model_requirements": {"task_type": "research.synthesis"},
-                "status": "ACTIVE" if research_current is not None else "AVAILABLE",
-                "current_task": (None if research_current is None else research_current["task_id"]),
-                "verification_requirements": (
-                    "provider search response",
-                    "source content digest",
-                    "retrieval timestamp",
-                    "cross-source comparison",
-                ),
-                "recent_work": tuple(
-                    {"task_id": item["task_id"], "goal": item["goal"], "status": item["status"]}
-                    for item in research_work[:5]
-                ),
-            },
+                None,
+            )
+            out.append(
+                {
+                    "agent_id": agent.agent_id,
+                    "name": agent.name,
+                    "role": agent.role,
+                    "domain": agent.domain,
+                    "capabilities": agent.capabilities,
+                    "permissions": agent.permissions,
+                    "model_requirements": {
+                        "task_type": (
+                            None
+                            if agent.model_requirements is None
+                            else agent.model_requirements.task_type
+                        )
+                    },
+                    "status": "ACTIVE" if current is not None else "AVAILABLE",
+                    "current_task": None if current is None else current["task_id"],
+                    "verification_requirements": (
+                        "independent structural verification",
+                    ),
+                    "recent_work": tuple(
+                        {
+                            "task_id": item["task_id"],
+                            "goal": item["goal"],
+                            "status": item["status"],
+                        }
+                        for item in agent_work[:5]
+                    ),
+                }
+            )
+
+        # Include freelancing domain representation
+        out.append(
             {
                 "agent_id": "freelancing.domain",
                 "name": "Freelancing Domain",
@@ -547,13 +926,18 @@ class ZyroApplication:
                     "signed QA evidence",
                 ),
                 "recent_work": (),
-            },
+            }
         )
+        return tuple(out)
 
     def close(self) -> None:
+        self.scheduler_worker.stop_sync()
         self.store.close()
         self.workflows.close()
         self.resources.close()
+        self.memory.close()
+        self.knowledge.close()
+        self.state_store.close()
 
 
 __all__ = ["LocalAssistantProvider", "ZyroApplication"]

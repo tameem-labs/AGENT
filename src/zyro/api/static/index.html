@@ -59,8 +59,10 @@
         <p>ORGANIZATION</p>
         <button data-view="agents"><span>◎</span> Organization</button>
         <button data-view="memory"><span>▱</span> Memory</button>
-        <button data-view="activity"><span>↗</span> Activity</button>
+        <button data-view="knowledge"><span>📖</span> Knowledge</button>
         <p>SYSTEM</p>
+        <button data-view="notifications"><span>🔔</span> Notifications <b id="notification-count">0</b></button>
+        <button data-view="activity"><span>↗</span> Activity</button>
         <button data-view="integrations"><span>⛓</span> Integrations</button>
         <button data-view="status"><span>◈</span> System status</button>
         <button data-view="settings"><span>⚙</span> Settings</button>
@@ -82,8 +84,22 @@
       <section id="view-work" class="view"><div class="section-head"><div><h3>Active work</h3><p>Canonical Task state — no inferred progress.</p></div><div class="filters"><button class="active">All</button><button>Running</button><button>Waiting</button><button>Failed</button></div></div><div id="tasks" class="data-grid"></div></section>
       <section id="view-workflows" class="view"><div class="section-head"><div><h3>Workflows</h3><p>Steps, dependencies, attempts, and durable history.</p></div></div><div id="workflows" class="stack"></div></section>
       <section id="view-approvals" class="view"><div class="section-head"><div><h3>Approval center</h3><p>Review exact consequential actions before execution.</p></div></div><div id="approvals" class="stack"><div class="empty"><span>◇</span><h4>No pending approvals</h4><p>Requests requiring your authority will appear here with exact payload, risk, requester, and expiry.</p></div></div></section>
-      <section id="view-agents" class="view"><div class="section-head"><div><h3>ZYRO organization</h3><p>Only registered agents are active. Future departments are explicitly planned.</p></div></div><div id="organization" class="organization-tree"></div><h3 class="subsection-title">Registered agents</h3><div id="agents" class="card-grid"></div></section>
+      <section id="view-agents" class="view">
+        <div class="section-head"><div><h3>ZYRO organization</h3><p>Only registered agents are active. Galaxy reflects live state.</p></div></div>
+        <div class="galaxy-container">
+          <div class="galaxy-header">
+            <div><strong>Organization Galaxy</strong><small class="mono">LIVE RUNTIME AGENTS &amp; ACTIVE WORK ARCS</small></div>
+            <div class="galaxy-legend"><span><i class="dot gold"></i> Executive</span><span><i class="dot cyan"></i> Departments</span><span><i class="dot green"></i> Specialists</span><span><i class="dot pulse"></i> Active Work</span></div>
+          </div>
+          <canvas id="galaxy-canvas" width="860" height="400"></canvas>
+        </div>
+        <div id="organization" class="organization-tree"></div>
+        <h3 class="subsection-title">Registered agents</h3>
+        <div id="agents" class="card-grid"></div>
+      </section>
       <section id="view-memory" class="view"><div class="section-head"><div><h3>Memory</h3><p>Owner-controlled records. Credentials never belong here.</p></div></div><div id="memory" class="stack"></div></section>
+      <section id="view-knowledge" class="view"><div class="section-head"><div><h3>Knowledge Base</h3><p>Verified reference knowledge records. Scoped and protected from credentials.</p></div></div><div id="knowledge" class="stack"></div></section>
+      <section id="view-notifications" class="view"><div class="section-head"><div><h3>Proactive Notifications</h3><p>Attention items, expiring approvals, blocked workflows, and system alerts.</p></div></div><div id="notifications" class="stack"></div></section>
       <section id="view-activity" class="view"><div class="section-head"><div><h3>Activity</h3><p>Correlated workflow and execution history.</p></div></div><div id="activity" class="timeline"></div></section>
       <section id="view-integrations" class="view"><div class="section-head"><div><h3>Integration center</h3><p>Connect provider accounts without exposing credentials to agents or the browser.</p></div><span class="secure-badge">▣ SERVER-SIDE OAUTH</span></div><div id="integrations" class="integration-grid"></div></section>
       <section id="view-status" class="view"><div class="section-head"><div><h3>System status</h3><p>Providers, runtime, queues, and capability health.</p></div></div><div id="system-status" class="status-layout"></div></section>

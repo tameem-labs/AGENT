@@ -1,5 +1,6 @@
 """Durable local workflow contracts, store, runner, and cooperative scheduler."""
 
+from zyro.workflows.background import BackgroundSchedulerWorker
 from zyro.workflows.contracts import (
     StepStatus,
     TriggerKind,
@@ -13,6 +14,7 @@ from zyro.workflows.scheduler import LocalWorkflowScheduler
 from zyro.workflows.store import WorkflowStore
 
 __all__ = [
+    "BackgroundSchedulerWorker",
     "LocalWorkflowScheduler",
     "StepExecution",
     "StepRunner",

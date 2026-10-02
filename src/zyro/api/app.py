@@ -6,6 +6,7 @@ import os
 import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -15,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from zyro.application import ZyroApplication
+from zyro.core.scope import ResourceScope, ScopeKind
 from zyro.integrations import (
     ConnectedAccountActions,
     DevelopmentOAuthProvider,
@@ -24,12 +26,15 @@ from zyro.integrations import (
     OAuthProvider,
     build_official_oauth_providers,
 )
+from zyro.knowledge import KnowledgeQuery
+from zyro.memory import MemoryQuery
 from zyro.models.gemini import (
     DEFAULT_GEMINI_MODEL,
     GEMINI_API_KEY_URL,
     GeminiProvider,
     GeminiTransport,
 )
+from zyro.persistence import DatabaseCatalog
 from zyro.research import BRAVE_API_KEY_SECRET, BraveSearchHandler
 from zyro.security.approval import ApprovalError, ApprovalService, ApprovalState
 from zyro.security.identity import AuthenticatedPrincipal, LocalIdentityStore
@@ -47,6 +52,16 @@ class LoginBody(BaseModel):
 class ChatBody(BaseModel):
     message: str = Field(min_length=1, max_length=16_384)
     conversation_id: str | None = Field(default=None, max_length=256)
+
+
+class OpenAIConfigurationBody(BaseModel):
+    api_key: str = Field(min_length=16, max_length=512)
+    model_id: str = Field(default="gpt-4o", max_length=128)
+
+
+class AnthropicConfigurationBody(BaseModel):
+    api_key: str = Field(min_length=16, max_length=512)
+    model_id: str = Field(default="claude-3-5-sonnet-20241022", max_length=128)
 
 
 class OAuthStartBody(BaseModel):
@@ -160,8 +175,12 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        yield
-        runtime.close()
+        runtime.application.scheduler_worker.start()
+        try:
+            yield
+        finally:
+            await runtime.application.scheduler_worker.stop()
+            runtime.close()
 
     app = FastAPI(
         title="ZYRO Local API",
@@ -315,6 +334,38 @@ def create_app(
     ) -> None:
         runtime.gemini.remove()
         runtime.credentials.set_setting("models.default_provider", "zyro.local")
+
+    @app.put("/api/models/openai")
+    def configure_openai(
+        body: OpenAIConfigurationBody,
+        _: AuthenticatedPrincipal = Depends(mutating_principal),
+    ) -> dict[str, Any]:
+        success = runtime.application.openai_provider.configure(body.api_key, body.model_id)
+        if not success:
+            raise HTTPException(422, "Invalid OpenAI API key format")
+        return runtime.application.openai_provider.status()
+
+    @app.delete("/api/models/openai", status_code=204)
+    def remove_openai(
+        _: AuthenticatedPrincipal = Depends(mutating_principal),
+    ) -> None:
+        runtime.application.openai_provider.remove_configuration()
+
+    @app.put("/api/models/anthropic")
+    def configure_anthropic(
+        body: AnthropicConfigurationBody,
+        _: AuthenticatedPrincipal = Depends(mutating_principal),
+    ) -> dict[str, Any]:
+        success = runtime.application.anthropic_provider.configure(body.api_key, body.model_id)
+        if not success:
+            raise HTTPException(422, "Invalid Anthropic API key format")
+        return runtime.application.anthropic_provider.status()
+
+    @app.delete("/api/models/anthropic", status_code=204)
+    def remove_anthropic(
+        _: AuthenticatedPrincipal = Depends(mutating_principal),
+    ) -> None:
+        runtime.application.anthropic_provider.remove_configuration()
 
     @app.get("/api/research/configuration")
     def research_configuration(
@@ -482,10 +533,7 @@ def create_app(
             raise HTTPException(409, str(error)) from error
         return {"approval_id": item.approval_id, "state": item.state.value}
 
-    @app.get("/api/organization")
-    def organization(
-        _: AuthenticatedPrincipal = Depends(principal),
-    ) -> dict[str, Any]:
+    def _get_organization() -> dict[str, Any]:
         agents = runtime.application.agents()
         return {
             "executive": next(item for item in agents if item["agent_id"] == "zyro.executive"),
@@ -521,6 +569,12 @@ def create_app(
                 ),
             ],
         }
+
+    @app.get("/api/organization")
+    def organization(
+        _: AuthenticatedPrincipal = Depends(principal),
+    ) -> dict[str, Any]:
+        return _get_organization()
 
     @app.get("/api/agents")
     def agents(
@@ -645,12 +699,114 @@ def create_app(
 
     @app.get("/api/memory")
     def memory(
-        _: AuthenticatedPrincipal = Depends(principal),
+        query: str = "*",
+        limit: int = 50,
+        current: AuthenticatedPrincipal = Depends(principal),
     ) -> dict[str, Any]:
+        q = MemoryQuery(
+            requester_id=current.principal_id,
+            scope=ResourceScope(ScopeKind.USER, current.principal_id),
+            query=query,
+            limit=min(limit, 100),
+        )
+        res = runtime.application.memory.retrieve(q)
+        records = [
+            {
+                "memory_id": r.memory_id,
+                "logical_key": r.logical_key,
+                "layer": r.layer.value,
+                "memory_type": r.memory_type.value,
+                "assertion_type": r.assertion_type.value,
+                "content": dict(r.content),
+                "confidence": r.confidence,
+                "status": r.status.value,
+                "created_at": r.created_at.isoformat(),
+                "updated_at": r.updated_at.isoformat(),
+            }
+            for r in res.records
+        ]
         return {
             "status": "AVAILABLE_THROUGH_CANONICAL_STORE",
-            "records": [],
-            "message": "No owner memory records have been created by the local product.",
+            "records": records,
+            "count": len(records),
+            "message": (
+                "Durable owner memory records retrieved."
+                if records
+                else "No owner memory records have been created by the local product."
+            ),
+        }
+
+    @app.get("/api/knowledge")
+    def knowledge(
+        query: str = "*",
+        limit: int = 20,
+        current: AuthenticatedPrincipal = Depends(principal),
+    ) -> dict[str, Any]:
+        kq = KnowledgeQuery(
+            requester_id=current.principal_id,
+            scope=ResourceScope(ScopeKind.USER, current.principal_id),
+            query=query,
+            limit=min(limit, 50),
+        )
+        res = runtime.application.knowledge.retrieve(kq)
+        records = [
+            {
+                "knowledge_id": k.knowledge_id,
+                "source_id": k.source_id,
+                "source_type": k.source_type.value,
+                "source_reference": k.source_reference,
+                "content": k.content,
+                "chunk_index": k.chunk_index,
+                "version": k.version,
+                "status": k.status.value,
+                "ingested_at": k.ingested_at.isoformat(),
+            }
+            for k in res.records
+        ]
+        return {"records": records, "count": len(records)}
+
+    @app.get("/api/notifications")
+    def notifications(
+        _: AuthenticatedPrincipal = Depends(principal),
+    ) -> tuple[dict[str, Any], ...]:
+        items = runtime.application.attention.scan()
+        return tuple(item.to_dict() for item in items)
+
+    @app.post("/api/notifications/{attention_id}/acknowledge")
+    def acknowledge_notification(
+        attention_id: str,
+        _: AuthenticatedPrincipal = Depends(mutating_principal),
+    ) -> dict[str, bool]:
+        runtime.application.attention.acknowledge(attention_id)
+        return {"acknowledged": True}
+
+    @app.get("/api/health")
+    def health() -> dict[str, Any]:
+        catalog = DatabaseCatalog(runtime.data_dir)
+        integrity = catalog.check_integrity()
+        healthy = all(integrity.values())
+        return {
+            "status": "HEALTHY" if healthy else "DEGRADED",
+            "databases": integrity,
+            "providers": runtime.application.status()["model_providers"],
+        }
+
+    @app.get("/api/organization/galaxy")
+    def organization_galaxy(
+        _: AuthenticatedPrincipal = Depends(principal),
+    ) -> dict[str, Any]:
+        agents = runtime.application.agents()
+        org = _get_organization()
+        tasks = runtime.application.store.tasks()
+        active_tasks = [
+            t for t in tasks if t.get("status") not in {"DONE", "FAILED", "CANCELLED"}
+        ]
+        return {
+            "executive": next(item for item in agents if item["agent_id"] == "zyro.executive"),
+            "departments": org["departments"],
+            "agents": agents,
+            "active_tasks": active_tasks,
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
     @app.get("/api/status")

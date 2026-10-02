@@ -29,3 +29,9 @@ class AgentRegistry:
             return self._agents[agent_id]
         except KeyError as error:
             raise MissingAgentError(f"agent is not registered: {agent_id}") from error
+
+    def list(self) -> tuple[AgentDefinition, ...]:
+        return tuple(agent.definition for agent in self._agents.values())
+
+    def contains(self, agent_id: str) -> bool:
+        return agent_id in self._agents

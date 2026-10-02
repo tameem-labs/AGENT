@@ -136,3 +136,52 @@ def test_startup_fails_closed_on_corrupt_existing_database(tmp_path: Path) -> No
     (data_dir / "application.sqlite").write_bytes(b"not a sqlite database")
     with pytest.raises(RuntimeError, match="integrity check failed"):
         create_app(data_dir)
+
+
+def test_new_api_endpoints_health_galaxy_notifications_knowledge(tmp_path: Path) -> None:
+    data_dir = tmp_path / "product"
+    app = create_app(data_dir)
+    with TestClient(app) as client:
+        csrf = authenticate(client)
+
+        # Health endpoint
+        health = client.get("/api/health").json()
+        assert health["status"] in {"HEALTHY", "DEGRADED"}
+        assert "databases" in health
+        assert "providers" in health
+        assert health["databases"]["knowledge"] is True
+
+        # Galaxy endpoint
+        galaxy = client.get("/api/organization/galaxy").json()
+        assert galaxy["executive"]["name"] == "ZYRO Executive"
+        assert len(galaxy["departments"]) > 0
+        dept_names = [d["name"] for d in galaxy["departments"]]
+        assert "Freelance" in dept_names
+        assert "Research" in dept_names
+
+        # Notifications endpoint
+        notifications = client.get("/api/notifications").json()
+        assert isinstance(notifications, list)
+
+        # Knowledge endpoint
+        knowledge = client.get("/api/knowledge").json()
+        assert "records" in knowledge
+        assert "count" in knowledge
+        assert isinstance(knowledge["records"], list)
+
+        # OpenAI and Anthropic provider configuration
+        res_oa = client.put(
+            "/api/models/openai",
+            json={"api_key": "sk-test-openai-key-12345678", "model_id": "gpt-4o"},
+            headers={"X-ZYRO-CSRF": csrf},
+        )
+        assert res_oa.status_code == 200
+        assert res_oa.json()["status"] == "REAL"
+
+        res_ant = client.put(
+            "/api/models/anthropic",
+            json={"api_key": "sk-ant-test-anthropic-key-12345678", "model_id": "claude-3-5-sonnet"},
+            headers={"X-ZYRO-CSRF": csrf},
+        )
+        assert res_ant.status_code == 200
+        assert res_ant.json()["status"] == "REAL"

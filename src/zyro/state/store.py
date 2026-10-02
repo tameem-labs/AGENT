@@ -47,7 +47,7 @@ class SQLiteStateStore:
             raise ValueError("at least one state category owner is required")
         self._clock = clock
         try:
-            self._connection = sqlite3.connect(self.path)
+            self._connection = sqlite3.connect(self.path, check_same_thread=False)
             self._connection.row_factory = sqlite3.Row
             self._connection.execute("PRAGMA journal_mode=WAL")
             self._connection.executescript(
@@ -70,6 +70,7 @@ class SQLiteStateStore:
                     ON current_state(scope_kind,scope_id,category);
                 """
             )
+            self._connection.execute("PRAGMA user_version=1")
             self._connection.commit()
         except sqlite3.Error as error:
             raise StateStoreError("unable to initialize state store") from error

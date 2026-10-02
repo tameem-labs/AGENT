@@ -64,7 +64,7 @@ class SQLiteKnowledgeStore:
         self._authorizer = authorizer
         self._clock = clock
         try:
-            self._connection = sqlite3.connect(self.path)
+            self._connection = sqlite3.connect(self.path, check_same_thread=False)
             self._connection.row_factory = sqlite3.Row
             self._connection.execute("PRAGMA journal_mode=WAL")
             self._connection.executescript(
@@ -91,6 +91,7 @@ class SQLiteKnowledgeStore:
                     ON knowledge(source_id,version,status,chunk_index);
                 """
             )
+            self._connection.execute("PRAGMA user_version=1")
             self._connection.commit()
         except sqlite3.Error as error:
             raise KnowledgeStoreError("unable to initialize knowledge store") from error

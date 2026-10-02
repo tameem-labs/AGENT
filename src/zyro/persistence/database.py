@@ -71,4 +71,65 @@ class MigrationManager:
         return target
 
 
-__all__ = ["Migration", "MigrationManager"]
+@dataclass(frozen=True, slots=True)
+class DatabaseSpec:
+    name: str
+    filename: str
+    description: str
+
+
+class DatabaseCatalog:
+    """Central registry and health manager for all ZYRO SQLite stores."""
+
+    DATABASES: tuple[DatabaseSpec, ...] = (
+        DatabaseSpec("auth", "auth.sqlite", "Authentication, users, and tokens"),
+        DatabaseSpec("credentials", "credentials.sqlite", "Encrypted OAuth and API credentials"),
+        DatabaseSpec(
+            "memory", "memory.sqlite", "Versioned episodic, semantic, and preference memory"
+        ),
+        DatabaseSpec(
+            "knowledge",
+            "knowledge.sqlite",
+            "Document chunks, search indices, and reference knowledge",
+        ),
+        DatabaseSpec("state", "state.sqlite", "Operational runtime state and checkpoints"),
+        DatabaseSpec("tasks", "tasks.sqlite", "Durable task records and execution receipts"),
+        DatabaseSpec(
+            "workflows", "workflows.sqlite", "Workflow runs, step states, and dependencies"
+        ),
+        DatabaseSpec(
+            "freelancing", "freelancing.sqlite", "Leads, clients, proposals, and CRM state"
+        ),
+        DatabaseSpec("research", "research.sqlite", "Research plans, dossiers, and evidence"),
+    )
+
+    def __init__(self, data_directory: str | Path) -> None:
+        self.data_dir = Path(data_directory)
+
+    def check_integrity(self) -> dict[str, bool]:
+        """Runs PRAGMA integrity_check on every existing database file."""
+        results: dict[str, bool] = {}
+        for spec in self.DATABASES:
+            db_path = self.data_dir / spec.filename
+            if not db_path.exists():
+                results[spec.name] = True
+                continue
+            mgr = MigrationManager(db_path, (Migration(1, "base_schema", lambda conn: None),))
+            results[spec.name] = mgr.integrity_check()
+        return results
+
+    def backup_all(self, backup_dir: str | Path) -> dict[str, Path]:
+        """Creates durable backups of all active databases using SQLite backup API."""
+        target_dir = Path(backup_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        backups: dict[str, Path] = {}
+        for spec in self.DATABASES:
+            db_path = self.data_dir / spec.filename
+            if db_path.exists():
+                mgr = MigrationManager(db_path, (Migration(1, "base_schema", lambda conn: None),))
+                backups[spec.name] = mgr.backup(target_dir / f"{spec.filename}.bak")
+        return backups
+
+
+__all__ = ["DatabaseCatalog", "DatabaseSpec", "Migration", "MigrationManager"]
+
