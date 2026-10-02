@@ -2,14 +2,15 @@
 
 ## Purpose
 
-ZYRO is designed as one canonical personal Executive backed by replaceable models, bounded tools, explicit orchestration, distinct memory/state/knowledge layers, policy-controlled execution, and independent verification. Current code implements the Executive/Task/Agent runtime, provider-independent model routing, bounded tools, scoped permission, action-bound approval state, mandatory authorization before handler invocation, structured independent verification evidence, and a bounded Freelancing lead validation/qualification/scoring consumer; later documented capabilities remain specifications rather than implementations.
+ZYRO is designed as one canonical personal Executive backed by replaceable models, bounded tools, explicit orchestration, distinct memory/state/knowledge layers, policy-controlled execution, and independent verification. Current code implements the Executive/Task/Agent runtime, model/tool routing, scoped authorization, verification, a bounded Freelancing qualification consumer, authorized Direct Messages, and a local durable SQLite Event Bus; later documented capabilities remain specifications rather than implementations.
 
 ## Repository structure
 
 | Path | Responsibility |
 | --- | --- |
 | `src/zyro/` | Installable Python package and implementation source |
-| `src/zyro/core/` | Canonical Executive, Task lifecycle, errors/risk/verification contracts, bounded in-process event publication seam, configuration, and logging |
+| `src/zyro/core/` | Canonical Executive, Task lifecycle, errors/risk/verification contracts, Event envelope and compatibility publisher, configuration, and logging |
+| `src/zyro/communication/` | Authorized Direct Messages plus SQLite Event persistence, subscriber delivery, ACK/retry/order/dead-letter state, and recovery |
 | `src/zyro/agents/` | Agent Definition, Agent Instance, bounded handler contract, and in-process registry |
 | `src/zyro/runtime/` | Process bootstrap plus Agent Runtime with narrow model/tool invocation boundaries |
 | `src/zyro/models/` | Provider-independent definitions, requirements, results, registries, provider contract, and deterministic router |
@@ -33,7 +34,7 @@ ZYRO is designed as one canonical personal Executive backed by replaceable model
 
 ## Architecture layers
 
-The intended flow is Interface → Executive/Identity/Brain → Orchestration and Runtime → Resource and State services → Tools/Execution → Permission/Approval/Security → Real World → Observability/Recovery. Implemented Core flow is Executive → Task → Agent Definition/Instance → Agent Runtime → optional Model Router/Provider and bounded Tool Executor → required Tool Authorizer → scoped Permission evaluation → risk-selected action Approval when required → handler execution → independent verification → guarded Task completion. The implemented Freelancing slice consumes that flow as LEAD_FOUND → validation Task → qualification Task → scoring Task → reproduction verification → revision-checked authoritative state → bounded LEAD_QUALIFIED publication. It does not redefine Task, security, model routing, or generic workflow lifecycle. Model suggestions never authorize execution, scores never grant authority, and unknown/unverified outcomes cannot publish final success. Empty package boundaries are not claims that later layers are implemented. Mandatory distinctions and safety constraints are in `docs/00_MASTER/ARCHITECTURE_INVARIANTS.md`.
+The intended flow is Interface → Executive/Identity/Brain → Orchestration and Runtime → Resource and State services → Tools/Execution → Permission/Approval/Security → Real World → Observability/Recovery. Implemented Core flow is Executive → Task → Agent Definition/Instance → Agent Runtime → optional Model Router/Provider and bounded Tool Executor → required Tool Authorizer → scoped Permission evaluation → risk-selected action Approval when required → handler execution → independent verification → guarded Task completion. The Freelancing slice consumes that flow and publishes `LEAD_QUALIFIED` only after committed verified state. Communication remains a separate authorized transport: Direct Messages are point-to-point, while durable Events are published facts with subscriber-specific state. The Event Bus never owns Task or lead state, provides at-least-once rather than exactly-once delivery, and orders only per subscriber/key. Empty package boundaries are not claims that later layers are implemented. Mandatory distinctions and safety constraints are in `docs/00_MASTER/ARCHITECTURE_INVARIANTS.md`.
 
 ## Authority and source-of-truth rules
 
@@ -54,4 +55,5 @@ The delivery sequence labels the scaffold **Phase 1 — Foundation** and Executi
 - **Delivery Phase 3 / Roadmap Phase 2:** Model Router + Tool System — implemented and verified.
 - **Delivery Phase 4 / Roadmap Phase 3:** Permission + Approval + Verification — implemented and verified.
 - **Delivery Phase 5 / Roadmap Phase 5:** Freelancing Qualification + Scoring — implemented and verified as a bounded consumer slice. No lead-finding integration or outreach was added.
-- **Later roadmap phases:** durable communication/event bus, memory/state/knowledge/context, outreach, replies, delivery, QA, handoff, hardening, and end-to-end workflows — documented only until explicitly requested.
+- **Delivery Phase 6 / Roadmap Phase 6:** Communication + Durable Event Bus — implemented with local SQLite persistence, bounded synchronous delivery, and Phase 4 authorization reuse.
+- **Later roadmap phases:** memory/state/knowledge/context, outreach, replies, delivery, QA, handoff, hardening, and end-to-end workflows — documented only until explicitly requested.

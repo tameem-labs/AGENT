@@ -87,9 +87,11 @@ def test_phase_five_has_no_outreach_or_forbidden_future_dependencies() -> None:
     assert "client_reply" not in source
 
 
-def test_event_seam_explicitly_refuses_durable_delivery_claims() -> None:
+def test_compatibility_event_publisher_remains_non_durable() -> None:
     source = (ROOT / "src" / "zyro" / "core" / "events.py").read_text()
+    publisher = source.split("class InProcessEventPublisher", 1)[1].split("def new_event_id", 1)[0]
 
-    assert "class InProcessEventPublisher" in source
-    assert "durable event bus" in source.lower()
-    assert "subscriber" not in source.lower()
+    assert "Compatibility recorder" in publisher
+    assert "def subscribe" not in publisher
+    assert "def deliver" not in publisher
+    assert "def acknowledge" not in publisher

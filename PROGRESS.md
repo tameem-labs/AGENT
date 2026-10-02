@@ -10,11 +10,75 @@ This file is a chronological, append-only implementation record. Add new entries
 
 ## Current status
 
-- **Current delivery phase:** Phase 5 — Freelancing Qualification + Scoring — **VERIFIED**
-- **Architecture-roadmap equivalent:** Phase 5 — Qualification + Scoring
-- **Next permitted work:** Only the next explicitly requested roadmap phase; Phase 6 was not started
+- **Current delivery phase:** Phase 6 — Communication + Durable Event Bus — **VERIFIED**
+- **Architecture-roadmap equivalent:** Phase 6 — Durable communication/event bus
+- **Next permitted work:** Phase 7 — Memory + State + Knowledge + Context, only when explicitly requested
 - **Known blockers:** None
-- **Explicitly not implemented:** lead finding/research integrations, outreach, email, CRM, client replies, delivery, QA, handoff, durable event bus, real external model/tools, memory/state/knowledge/context systems, browser/computer control, voice/camera, and distributed infrastructure remain **DOCUMENTED** only.
+- **Explicitly not implemented:** lead finding/research integrations, outreach, email, CRM, client replies, delivery, QA, handoff, real external model/tools, external brokers/distributed infrastructure, memory/state/knowledge/context systems, browser/computer control, and voice/camera remain **DOCUMENTED** only.
+
+---
+
+## 2026-10-02 03:38:46 UTC — Phase 6: Communication + Durable Event Bus
+
+### Status
+
+**IMPLEMENTED, TESTED, VERIFIED**
+
+### Inspection result
+
+- No Phase 6 source implementation existed. The repository had only the Phase 5 compatibility publisher and the locked protocol fields in documentation.
+- Phase 4 already provided the canonical permission evaluator, so communication authorization adapts that evaluator rather than defining another permission system.
+- SQLite is sufficient for the requested local durable boundary; no external broker, worker, network service, or background thread was introduced.
+
+### What was implemented
+
+- Evolved the immutable Event envelope with bounded recursively validated payloads, stable JSON round trips, nullable workflow identity, and explicit durable, ACK, ordering-key, and finite retry metadata while retaining the compatibility in-process publisher.
+- Added a separate locked Direct Message envelope and synchronous point-to-point service with durable identity deduplication, sender/receiver permission checks, registry resolution, acknowledgement/response-required behavior, cooperative timeout detection, finite attempts, correlation propagation, and structured failures.
+- Added a local SQLite communication store with transactional event-plus-subscriber-delivery persistence, durable subscriptions, per-subscriber delivery/attempt/ACK/retry/dead-letter state, identity and idempotency uniqueness, observability queries, and restart recovery.
+- Added a synchronous durable Event Bus with publish/consume authorization, at-least-once handler delivery, claim-before-invocation state, ACK correlation to event/subscriber/attempt, bounded backoff/retry, per-subscriber/per-key sequencing, independent subscriber outcomes, and dead letters retaining sanitized identifiers/failure metadata.
+- Recovery covers accepted-before-delivery, interrupted delivery, persisted ACK, retry wait, exhausted interrupted attempts, dead letters, duplicate publication/reconciliation, unknown rebound handlers, and multiple subscribers. Handler bindings remain intentionally process-local and observable when absent.
+- Changed `LEAD_QUALIFIED` to request durable, ACK-required, lead-key-ordered delivery only after verified lead-state commit. Added an explicit stable-idempotency reconciliation method for the honest non-atomic lead-store/communication-store boundary; the Event Bus never owns authoritative lead state.
+- Updated communication protocol documentation, README, project map, package metadata, and version to 0.6.0.
+
+### Files created or modified
+
+- Core/Event: `src/zyro/core/events.py`
+- Communication: `src/zyro/communication/{contracts,authorization,persistence,messages,event_bus}.py` and package exports
+- Freelancing integration: `src/zyro/domains/freelancing/pipeline.py`
+- Tests: Direct Message unit tests; Event Bus/restart/Freelancing integration tests; Phase 6 architecture guards and deterministic fakes
+- Documentation/configuration: `README.md`, `PROJECT_MAP.md`, `docs/01_CONTRACTS/MESSAGE_EVENT_PROTOCOL.md`, `PROGRESS.md`, `pyproject.toml`, and package version export
+
+### Tests and verification
+
+- `.venv/bin/pytest -q` — **TESTED**, 183 tests passed, including all Phase 1–5 regressions and Phase 6 envelope, authorization, ACK, retry, deduplication, ordering, dead-letter, restart, multi-subscriber, security, architecture, and Freelancing integration paths.
+- `.venv/bin/ruff check .` — **VERIFIED**, all checks passed.
+- `.venv/bin/ruff format --check .` — **VERIFIED**, all 104 Python files formatted.
+- `.venv/bin/mypy` — **VERIFIED**, no issues found in 86 source/test files.
+- `.venv/bin/python -m compileall -q src` — **VERIFIED**, source compilation succeeded during implementation.
+- `.venv/bin/python -m pip install -q -e '.[dev]'`, `.venv/bin/python -m zyro`, and import/source/distribution version smoke — **VERIFIED**, editable 0.6.0 installation and local runtime succeeded without credentials or network access.
+- `.venv/bin/python -m compileall -q src tests`, tracked secret-path/content scans, and `git diff --check` — **VERIFIED**, compilation and repository hygiene checks passed.
+
+### Verified failure and boundary behavior
+
+- Malformed/oversized/non-JSON/non-finite/secret-shaped payloads, malformed timestamps/flags/policies, empty identities, identity collisions, unknown receivers/subscribers, missing response/ACK, malformed handler outcomes, exceptions, timeouts, and persistence failures fail closed with bounded structured outcomes.
+- Unauthorized send, receive, publish, or consume does not invoke a handler. Existing scoped permission decisions and trace identifiers are preserved; payload data cannot grant permission or approval.
+- Event identity and idempotency-key duplicates do not republish. Direct Message identity collisions with a changed envelope do not deliver or expose the original response.
+- ACKs must match active event, subscriber, and attempt identities. Invalid, stale, unknown, and duplicate ACKs do not corrupt terminal state.
+- Subscriber failures remain independent. Ordering blocks only earlier nonterminal deliveries for the same subscriber and configured key; unrelated keys progress.
+- Delivery is explicitly at-least-once. A crash after handler invocation but before ACK can repeat handler execution after recovery; no exactly-once or global-order claim is made.
+
+### Known limitations
+
+- SQLite delivery is synchronous and single-process. There is no external broker, distributed claim coordination, hidden scheduler, or automatic background dispatcher.
+- Handler bindings are not persisted and must be rebound after restart. Persisted deliveries for unbound subscribers remain pending and are observable.
+- Synchronous Direct Message timeout enforcement observes elapsed time after a handler returns unless it raises `TimeoutError`; handlers are not forcibly interrupted.
+- Lead state and Event persistence use separate stores and are not atomic. Publication failure is explicit and repaired through the idempotent reconciliation seam; no transactional atomicity is claimed.
+- Delivery ACK confirms handler processing under this contract, not exactly-once real-world side effects. Handlers remain responsible for identity-based idempotence around irreversible effects.
+- Structured communication records intentionally do not constitute a full observability, scheduler, workflow, memory, knowledge, or context system.
+
+### Next permitted phase
+
+Stop after Phase 6. The exact next phase is **Phase 7 — Memory + State + Knowledge + Context** and must not begin without an explicit request.
 
 ---
 

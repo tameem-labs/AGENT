@@ -2,9 +2,9 @@
 
 ZYRO is specified as a personal Executive AI, computer agent, and AI organization. The user will interact with one canonical Executive while internal components coordinate domains, agents, models, tools, workflows, state, knowledge, security, execution, and verification.
 
-This repository has completed **Phase 5 — Freelancing Qualification + Scoring** in the delivery sequence. It implements the Executive/Task/Agent runtime, provider-independent model routing, bounded tools, Phase 4 authorization controls, and a deterministic Freelancing slice for lead validation, policy-driven qualification, policy-driven scoring, independent reproduction verification, compare-and-set lead state, duplicate suppression, and bounded `LEAD_QUALIFIED` publication. It does **not** include lead finding/research integrations, outreach, email, CRM, a durable event bus, real external model/tool adapters, memory, knowledge, context assembly, or later delivery-domain behavior.
+This repository has completed **Phase 6 — Communication + Durable Event Bus** in the delivery sequence. It implements the Executive/Task/Agent runtime, provider-independent model routing, bounded tools, Phase 4 authorization controls, the deterministic Freelancing qualification slice, canonical Direct Messages, and a local SQLite-backed durable Event Bus. Communication supports finite retries, subscriber-specific acknowledgements, identity-based deduplication, per-key ordering, dead letters, and restart recovery. It does **not** include lead-finding integrations, outreach, email, CRM, external brokers, real external model/tool adapters, memory, knowledge, context assembly, or later delivery-domain behavior.
 
-> Naming note: historical delivery phases 1–4 were offset by one from roadmap phases 0–3. The requested qualification/scoring milestone corresponds to roadmap Phase 5; `PROGRESS.md` records actual implementation status and the intentionally bounded prerequisites included in this slice.
+> Naming note: historical delivery phases 1–4 were offset by one from roadmap phases 0–3. Phase 6 corresponds to the durable communication/event-bus roadmap milestone; `PROGRESS.md` records actual implementation status.
 
 ## Requirements
 
@@ -39,11 +39,14 @@ Core contracts are located at:
 - `src/zyro/runtime/agent_runtime.py` — one bounded agent attempt with optional model/tool service boundaries
 - `src/zyro/execution/verification.py` — independent structural verification protocol
 - `src/zyro/domains/freelancing/` — lead contracts, policies, evaluators, Core agents, revisioned state, verification, and qualification pipeline
-- `src/zyro/core/events.py` — minimal idempotent in-process publication seam; not a durable event bus
+- `src/zyro/communication/` — authorized Direct Message delivery and the local durable SQLite Event Bus
+- `src/zyro/core/events.py` — canonical Event envelope plus the compatibility in-process publisher
 
 Providers and tools are registered programmatically with non-secret definitions. The repository ships no product provider adapter and requires no API key. Deterministic providers, tools, and lead fixtures under `tests/` are test infrastructure only. Model-requested tool calls are inert data: every supported tool execution passes through a required, separate authorizer before the handler. Capability, risk classification, standing permission, action approval, execution, verification, and Task completion remain distinct.
 
-Freelancing qualification/scoring is pure policy evaluation and does not invoke a tool or grant authority. The Lead Qualification and Lead Scoring agents run through the canonical Agent Runtime and Task lifecycle. Each stage is independently reproduced against the same authoritative lead revision and policy before a compare-and-set state write. A score remains business output only. `LEAD_QUALIFIED` is published only after the final verified state commit, through a non-durable in-process seam.
+Freelancing qualification/scoring is pure policy evaluation and does not invoke a tool or grant authority. Each stage is independently reproduced against the same authoritative lead revision and policy before a compare-and-set state write. A score remains business output only. `LEAD_QUALIFIED` is durably persisted only after the final verified state commit. Lead state and event persistence are not one atomic transaction; an explicit idempotent reconciliation method repairs a reported publication failure without making the Event Bus authoritative for lead state.
+
+The Event Bus provides **at-least-once** local delivery, not exactly-once execution and not global ordering. Ordering applies only per subscriber and configured ordering key. Handler bindings are process-local and must be rebound after restart; persisted unknown subscriptions remain pending. Direct Message handler timeout detection is cooperative for synchronous handlers. Both communication paths reuse Phase 4 permission evaluation and fail closed before delivery.
 
 ## Quality checks
 

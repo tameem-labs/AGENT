@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from zyro.agents.registry import AgentRegistry
-from zyro.core.events import Event, EventDelivery, EventPublisher
+from zyro.core.events import Event, EventDelivery, EventPublisher, RetryPolicy
 from zyro.core.executive import ExecutiveOutcome, ExecutiveResult, UserRequest, ZyroExecutive
 from zyro.domains.freelancing.agents import (
     QUALIFICATION_AGENT_ID,
@@ -21,6 +21,7 @@ from zyro.domains.freelancing.agents import (
 from zyro.domains.freelancing.contracts import (
     LeadProvenance,
     LeadRecord,
+    LeadState,
     PipelineOutcome,
     PipelineResult,
     QualificationOutcome,
@@ -214,10 +215,62 @@ class FreelancingQualificationPipeline:
         if scoring.outcome is not ScoringOutcome.SCORED:
             return PipelineResult(PipelineOutcome.INVALID, current, tuple(task_ids))
 
-        event = Event(
-            event_id=self._id_factory(),
+        return self._publish_qualified(
+            current,
+            tuple(task_ids),
             request_id=scoring_run.request_id,
             task_id=scoring_run.task_id,
+            correlation_id=correlation_id,
+        )
+
+    def reconcile_publication(self, lead_id: str) -> PipelineResult:
+        """Retry publication for committed qualified state after a prior boundary failure.
+
+        Lead state and the communication database are intentionally not presented as one
+        atomic transaction. The stable idempotency key makes this explicit recovery seam
+        safe to invoke repeatedly; it never changes authoritative lead state.
+        """
+        current = self._repository.get(lead_id)
+        if (
+            current.state is not LeadState.LEAD_QUALIFIED
+            or current.qualification is None
+            or current.scoring is None
+        ):
+            return PipelineResult(
+                PipelineOutcome.PUBLICATION_FAILED,
+                current,
+                reason="Only committed LEAD_QUALIFIED state can be reconciled.",
+            )
+        return self._publish_qualified(
+            current,
+            (),
+            request_id=self._id_factory(),
+            task_id=self._id_factory(),
+            correlation_id=self._id_factory(),
+        )
+
+    def _publish_qualified(
+        self,
+        current: LeadRecord,
+        task_ids: tuple[str, ...],
+        *,
+        request_id: str,
+        task_id: str,
+        correlation_id: str,
+    ) -> PipelineResult:
+        qualification = current.qualification
+        scoring = current.scoring
+        if qualification is None or scoring is None:
+            return PipelineResult(
+                PipelineOutcome.PUBLICATION_FAILED,
+                current,
+                task_ids,
+                reason="Committed qualification and scoring are required for publication.",
+            )
+        event = Event(
+            event_id=self._id_factory(),
+            request_id=request_id,
+            task_id=task_id,
             correlation_id=correlation_id,
             event_type="LEAD_QUALIFIED",
             publisher="freelancing.qualification-pipeline",
@@ -230,7 +283,12 @@ class FreelancingQualificationPipeline:
             },
             timestamp=self._clock(),
             version="1.0",
-            delivery=EventDelivery(ordering_key=current.lead_id),
+            delivery=EventDelivery(
+                durable=True,
+                ack_required=True,
+                ordering_key=current.lead_id,
+                retry_policy=RetryPolicy(max_attempts=3),
+            ),
         )
         idempotency_key = (
             f"LEAD_QUALIFIED:{current.lead_id}:"
@@ -244,13 +302,13 @@ class FreelancingQualificationPipeline:
             return PipelineResult(
                 PipelineOutcome.PUBLICATION_FAILED,
                 current,
-                tuple(task_ids),
+                task_ids,
                 reason="Authoritative state committed, but bounded event publication failed.",
             )
         return PipelineResult(
             PipelineOutcome.LEAD_QUALIFIED,
             current,
-            tuple(task_ids),
+            task_ids,
             event.event_id,
         )
 
