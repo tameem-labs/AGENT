@@ -10,11 +10,81 @@ This file is a chronological, append-only implementation record. Add new entries
 
 ## Current status
 
-- **Current delivery phase:** Phase 8 — Recovery + Observability + Resource Hardening — **VERIFIED**
-- **Architecture-roadmap equivalent:** Recovery + Observability + Resource Hardening
-- **Next permitted work:** Phase 9 — Outreach + Approval + External Action Execution, only when explicitly requested
+- **Current delivery phase:** Combined Phase 9 + Phase 10 Round 1 — Outreach + External Actions + Replies + Delivery + QA + Handoff — **VERIFIED**
+- **Architecture-roadmap equivalent:** Controlled Freelancing operational lifecycle through verified handoff
+- **Next permitted work:** Final E2E Hardening / Integration / Production Readiness, only when explicitly requested
 - **Known blockers:** None
-- **Explicitly not implemented:** scheduler, workflow engine, lead finding/research integrations, outreach/external action execution, email, CRM, client replies, delivery, QA, handoff, real external model/tools, vector/distributed/cloud storage, browser/computer control, voice/camera, distributed workers/brokers, monitoring SaaS, and autonomous self-healing remain **DOCUMENTED** only.
+- **Explicitly not implemented:** credentialed production email/CRM providers, scheduler, full workflow engine, lead-finding integrations, browser/computer control, voice/camera, UI/dashboard, payments/billing/contracts, unrestricted autonomous outreach, distributed/cloud deployment, monitoring SaaS, and final production hardening remain **ADAPTER ONLY**, **DOCUMENTED**, or **FUTURE** as stated below.
+
+---
+
+## 2026-10-02 05:12:39 UTC — Combined Phase 9 + Phase 10 Round 1
+
+### Status
+
+**IMPLEMENTED, TESTED, VERIFIED** — external providers remain **ADAPTER ONLY**; bundled outbound execution is explicitly **SIMULATED**.
+
+### Inspection result
+
+- The repository already supplied canonical Tool Registry/Executor, standing Permission, expiring action-specific Approval, Task/Agent Runtime, Verification, durable Event Bus, Recovery, Observability, Resource Manager, Context, and a verified Freelancing qualification pipeline. Round 1 extends those boundaries rather than replacing them.
+- Existing Approval argument fingerprints already provided the correct exact-action binding. Approval requests were compatibly extended with a bounded non-secret human review display; no second approval system was introduced.
+- No credentialed email/CRM provider existed. Implementation therefore defines a bounded channel adapter protocol and an explicitly simulated deterministic test adapter without claiming real delivery.
+
+### What was implemented
+
+- Added immutable outreach preparation with qualified-lead revision/verification provenance, recipient/channel, exact final subject/body, objective, personalization/source evidence, model/provider provenance where applicable, policy, strict risk, permission capability, and verification plan.
+- Added `send_outreach` as an invariant `STRICT_AUTHORIZATION` Tool definition and handler. Dispatch always reuses Tool Executor → Permission → Risk Policy → existing Approval. Approval review records include the exact final message; fingerprints bind every execution argument, and approved requests now also expire at policy expiry.
+- Added a durable SQLite external-action ledger with stable action identity, payload-conflict detection, atomic pre-dispatch claim, terminal idempotency, explicit simulated/provider references, separate accepted/delivered/verified/failed/uncertain states, and restart conversion of interrupted `DISPATCHING` work to `UNCERTAIN`.
+- Added Phase 8 Recovery translation for uncertain external effects. Safe reconciliation may resume; absent reconciliation the action remains uncertain and cannot be blindly resent.
+- Added Tool concurrency lease and optional provider-rate admission inside the authorized handler. Capacity/rate failure invokes no adapter and creates no hidden budget reset.
+- Added durable, normalized, secret-safe client-reply intake and `CLIENT_REPLY_RECEIVED` publication with identity deduplication. External body text is never placed in events and has no Tool, Permission, Approval, owner, or project authority.
+- Added deterministic advisory Reply Processing for interested, not interested, question/request, potential project, unclear, spam/irrelevant, and other outcomes with evidence and stable processing identity. It performs no external action.
+- Added a durable revisioned Project aggregate with explicit pending/active/delivery/QA/handoff/completed/closed/rejected/cancelled transitions, scope, deadlines, dependencies, deliverables, owners, and verification requirements. Potential replies create only pending opportunities; activation is explicit compare-and-set state.
+- Added resource-gated Delivery coordination through the canonical Executive, Task, Agent Runtime, and independent Verification. Durable delivery records preserve request/task/workflow/correlation, agent/instance, attempts, outcome, and verification identity.
+- Added structured QA criteria/evidence/severity and PASS/FAIL/NEEDS_REVIEW/INCONCLUSIVE results. Added Handoff records that reach verified completion only when canonical delivery Tasks, deliverables, QA evidence, and outstanding-issue checks all pass.
+- Added bounded Outreach Preparation, Reply Processing, Project Management, and QA Agent definitions/handlers through the existing Agent Registry/Runtime composition.
+- Added durable domain events and fail-open bounded operational traces for outreach, reply intake/processing, project creation, delivery Tasks, QA, and handoff without making Event Bus or Observability authoritative state.
+- Updated security/runtime/freelancing documentation, README, project map, package metadata, and version to 0.9.0.
+
+### Files created or modified
+
+- New Freelancing operations: `src/zyro/domains/freelancing/{outreach,replies,delivery,operations_agents}.py` and package exports
+- Existing authority integration: `src/zyro/security/{approval,authorization}.py`, `src/zyro/tools/{contracts,executor}.py`, `src/zyro/agents/handler.py`, and `src/zyro/observability/adapters.py`
+- Tests: outreach/approval/permission/idempotency/restart/recovery/resource unit coverage; reply/project/QA/handoff tests; canonical delivery runtime and full round-trip integration; operational architecture guards
+- Documentation/version: `README.md`, `PROJECT_MAP.md`, `PROGRESS.md`, `domains/freelancing/FREELANCING_SPEC.md`, security/runtime policies, `pyproject.toml`, and package version export
+
+### Tests and verification
+
+- `.venv/bin/pytest -q` — **TESTED**, 289 tests passed, including every prior regression and new exact approval, expiry, revocation, changed payload, duplicate action/event/reply, timeout uncertainty, restart, rate capacity, reply safety, compare-and-set project, canonical delivery, QA, handoff, and end-to-end paths.
+- Focused Round 1/security pytest run — **TESTED**, 61 tests passed.
+- `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .` — **VERIFIED**, all checks passed and all 151 Python files formatted.
+- `.venv/bin/mypy` — **VERIFIED**, no issues found in 133 source/test files.
+- `.venv/bin/python -m compileall -q src tests` — **VERIFIED**.
+- Editable 0.9.0 install, CLI/import/source/distribution-version smoke, secret/credential scans, future-infrastructure scans, architecture/security checks, `git diff --check`, complete diff review, commit, normal push, and clean status — **VERIFIED**.
+
+### Verified failure and boundary behavior
+
+- Qualified/prepared/model-recommended outreach cannot send without current standing Permission and explicit human Approval. Requester/executor self-approval fails. Changed exact content, expired/cancelled/denied approval, or revoked Permission invokes no adapter.
+- Duplicate dispatch, duplicate callback, Event redelivery-equivalent replay, user double-submit, and restart do not duplicate the action/reply/project. Identity collision with changed content fails rather than pretending success.
+- Timeout or process interruption after dispatch may have started becomes durable `UNCERTAIN`; it is never represented as success and repeated calls do not invoke the adapter. Recovery recommends only safe reconciliation or retained uncertainty.
+- Simulated acceptance/delivery is labeled simulated and cannot become real verified delivery. Provider accepted, delivered, independently verified, and succeeded-but-unverified states remain distinct.
+- External client text remains data. It cannot invoke a privileged Tool, approve outreach, activate a project, create a contract, or trigger an outbound response.
+- Resource queue/rate denial prevents external invocation or canonical delivery execution. No model/client/event data can modify limits.
+- QA failure and unverified delivery cannot become verified handoff. Verified completion requires a verified canonical delivery Task, verified deliverables, passing evidence-backed QA, and no outstanding issue.
+- Events and traces contain bounded identifiers/status metadata rather than exact reply bodies, credentials, provider authentication, or secret material.
+
+### Known limitations
+
+- Email/CRM integrations are protocol boundaries only. The repository ships no production credential handling, provider SDK, webhook server, or real delivery verifier. The deterministic adapter is test-only and explicitly simulated.
+- Approval and Permission services retain their existing process-local implementation. Restart loses open approval decisions and therefore fails safe; durable external action state still prevents duplicate dispatch after a side effect may have started.
+- Project/Reply/Outreach stores are synchronous local SQLite. Lead qualification state remains its existing in-process aggregate. There is no distributed transaction spanning lead, event, approval, action, reply, and project stores.
+- Reply classification is deterministic lexical policy, not semantic truth. Model-assisted classification can be composed through the existing Model Router later but remains advisory.
+- Delivery is bounded orchestration, not a scheduler or project-management SaaS. Callers explicitly initiate Tasks, state transitions, QA, and handoff.
+- No automatic reply, quote, contract, payment, CRM mutation, browser automation, voice/camera, UI, distributed worker, or final production-readiness behavior is included.
+
+### Next permitted phase
+
+Stop after this combined Round 1. The exact next major round is **Final E2E Hardening / Integration / Production Readiness** and must not begin without an explicit request.
 
 ---
 

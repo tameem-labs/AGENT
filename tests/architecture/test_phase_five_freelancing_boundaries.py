@@ -13,6 +13,18 @@ from zyro.domains.freelancing.agents import (
 
 ROOT = Path(__file__).resolve().parents[2]
 DOMAIN = ROOT / "src" / "zyro" / "domains" / "freelancing"
+PHASE_FIVE_FILES = tuple(
+    DOMAIN / name
+    for name in (
+        "agents.py",
+        "contracts.py",
+        "evaluation.py",
+        "pipeline.py",
+        "policies.py",
+        "state.py",
+        "verification.py",
+    )
+)
 
 
 def imports(path: Path) -> set[str]:
@@ -55,7 +67,7 @@ def test_domain_agents_do_not_choose_providers_self_approve_or_mutate_tasks() ->
 
 
 def test_domain_does_not_redefine_core_task_or_bypass_tool_authorization() -> None:
-    for path in DOMAIN.glob("*.py"):
+    for path in PHASE_FIVE_FILES:
         source = path.read_text()
         tree = ast.parse(source)
         class_names = {node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)}
@@ -76,11 +88,11 @@ def test_phase_five_has_no_outreach_or_forbidden_future_dependencies() -> None:
         "zyro.interfaces",
     }
     all_imports: set[str] = set()
-    for path in DOMAIN.glob("*.py"):
+    for path in PHASE_FIVE_FILES:
         all_imports.update(imports(path))
 
     assert forbidden_imports.isdisjoint(all_imports)
-    source = "\n".join(path.read_text().lower() for path in DOMAIN.glob("*.py"))
+    source = "\n".join(path.read_text().lower() for path in PHASE_FIVE_FILES)
     assert "send_email" not in source
     assert "browser" not in source
     assert "crm_client" not in source

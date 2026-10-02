@@ -20,4 +20,6 @@ High-risk examples:
 - credential changes
 - irreversible actions
 
-Approval must be bound to the intended action, expires to deny, and cannot silently become permanent permission.
+Approval must be bound to the intended action, expires to deny (including an approved action not dispatched before expiry), and cannot silently become permanent permission.
+
+For `send_outreach`, risk is always `STRICT_AUTHORIZATION`. The existing Tool Authorization service binds recipient, channel, exact final subject/body, conditions, and expected effect through the canonical action fingerprint. Approval requests include a bounded, non-secret human review display of the exact final payload. A changed payload fails action matching and requires a new approval. The requester, executing agent, model, external message, Memory, event, voice, or camera data cannot approve the action. Standing permission is re-evaluated immediately before every dispatch, so revocation blocks even previously approved content.

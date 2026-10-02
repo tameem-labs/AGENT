@@ -91,6 +91,7 @@ class ObservedToolInvoker:
             call.request_id,
             call.task_id,
             call.correlation_id,
+            workflow_id=call.workflow_id,
             agent_id=call.agent_id,
             instance_id=call.instance_id,
         )

@@ -2,7 +2,7 @@
 
 ZYRO is specified as a personal Executive AI, computer agent, and AI organization. The user will interact with one canonical Executive while internal components coordinate domains, agents, models, tools, workflows, state, knowledge, security, execution, and verification.
 
-This repository has completed **Phase 8 — Recovery + Observability + Resource Hardening** in the delivery sequence. It implements the prior Executive/Task/Agent, model/tool, authorization, Freelancing, communication, Memory/State/Knowledge/Context phases plus deterministic recovery decisions, durable operational traces, and local resource admission/accounting. These Phase 8 services are synchronous and SQLite-backed; they do **not** form a scheduler or workflow engine, grant permission or approval, perform external actions, or include outreach, email, CRM, browser control, distributed infrastructure, or later delivery-domain behavior.
+This repository has completed the combined **Phase 9 + Phase 10 Round 1 — Outreach, External Actions, Replies, Delivery, QA, and Handoff** milestone. It now supports a controlled local freelancing loop over the prior Executive/Task/Agent, tool authorization, durable communication, context, recovery, observability, and resource foundations. Outbound messages require standing permission plus expiring human approval of the exact final payload and execute only through the canonical Tool Executor. External channels remain bounded adapters; the repository ships an explicitly simulated test adapter and no credentialed production email/CRM provider. It still does **not** include a scheduler, workflow engine, browser/computer control, UI, payments, distributed deployment, or autonomous outreach.
 
 > Naming note: historical delivery phases 1–4 were offset by one from roadmap phases 0–3. `PROGRESS.md` records actual implementation status and phase mapping.
 
@@ -38,7 +38,7 @@ Core contracts are located at:
 - `src/zyro/tools/` — bounded definitions/calls/results, registry, schema validation, and executor
 - `src/zyro/runtime/agent_runtime.py` — one bounded agent attempt with optional model/tool service boundaries
 - `src/zyro/execution/verification.py` — independent structural verification protocol
-- `src/zyro/domains/freelancing/` — lead contracts, policies, evaluators, Core agents, revisioned state, verification, and qualification pipeline
+- `src/zyro/domains/freelancing/` — qualification plus exact-message outreach, idempotent channel adapters, reply intake/processing, project state, canonical delivery Tasks, QA, and handoff
 - `src/zyro/communication/` — authorized Direct Message delivery and the local durable SQLite Event Bus
 - `src/zyro/memory/` — selective historical records, provenance, retention, correction, forgetting, and bounded retrieval
 - `src/zyro/state/` — owner-controlled current snapshots with compare-and-set revisions
@@ -52,6 +52,10 @@ Core contracts are located at:
 Providers and tools are registered programmatically with non-secret definitions. The repository ships no product provider adapter and requires no API key. Deterministic providers, tools, and lead fixtures under `tests/` are test infrastructure only. Model-requested tool calls are inert data: every supported tool execution passes through a required, separate authorizer before the handler. Capability, risk classification, standing permission, action approval, execution, verification, and Task completion remain distinct.
 
 Freelancing qualification/scoring is pure policy evaluation and does not invoke a tool or grant authority. Each stage is independently reproduced against the same authoritative lead revision and policy before a compare-and-set state write. A score remains business output only. `LEAD_QUALIFIED` is durably persisted only after the final verified state commit. Lead state and event persistence are not one atomic transaction; an explicit idempotent reconciliation method repairs a reported publication failure without making the Event Bus authoritative for lead state.
+
+Operational Freelancing extends that verified lead with immutable outreach preparations containing the exact recipient/channel/message, evidence, policy, and verification plan. `send_outreach` is always `STRICT_AUTHORIZATION`: the existing permission evaluator runs at dispatch, and the existing expiring Approval service binds exact arguments plus a safe human-readable review display. The only bundled outbound adapter is explicitly simulated. Durable action identities prevent duplicate dispatch, interrupted `DISPATCHING` work reopens as `UNCERTAIN`, and Phase 8 Recovery permits reconciliation—not blind resend. Provider acceptance, delivery, and independent verification remain distinct.
+
+Validated external replies are persisted and published as data before deterministic advisory classification; reply text has no tool, permission, approval, contract, or project authority. Potential projects begin `PROJECT_PENDING` and require explicit compare-and-set activation. Delivery work runs through canonical Executive/Task/Agent/Verification under Resource reservations. QA records criteria/evidence and can fail or remain inconclusive. Handoff reaches verified completion only when canonical delivery Tasks, deliverables, and QA evidence are all verified.
 
 The Event Bus provides **at-least-once** local delivery, not exactly-once execution and not global ordering. Ordering applies only per subscriber and configured ordering key. Handler bindings are process-local and must be rebound after restart; persisted unknown subscriptions remain pending. Direct Message handler timeout detection is cooperative for synchronous handlers. Both communication paths reuse Phase 4 permission evaluation and fail closed before delivery.
 

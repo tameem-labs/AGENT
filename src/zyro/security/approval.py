@@ -12,6 +12,7 @@ from types import MappingProxyType
 from typing import Any
 from uuid import uuid4
 
+from zyro.core.data import validate_record
 from zyro.core.risk import RiskClass
 from zyro.security.permission import PermissionScope
 
@@ -185,6 +186,7 @@ class ApprovalRequest:
     decision_reason: str | None = None
     escalation_principal_id: str | None = None
     escalation_reason: str | None = None
+    display: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -203,6 +205,14 @@ class ApprovalRequest:
             raise ApprovalError("approval expiry must be after request time")
         if any(not item.strip() for item in self.evidence):
             raise ApprovalError("approval evidence entries must not be empty")
+        try:
+            object.__setattr__(
+                self,
+                "display",
+                validate_record(self.display, "approval display", max_bytes=16_384),
+            )
+        except ValueError as error:
+            raise ApprovalError(str(error)) from error
         decision_fields = (
             self.decision_principal_id,
             self.decided_at,
@@ -279,6 +289,7 @@ class ApprovalService:
         expires_at: datetime,
         workflow_id: str | None = None,
         evidence: tuple[str, ...] = (),
+        display: Mapping[str, Any] | None = None,
     ) -> ApprovalRequest:
         requested_at = self._clock()
         approval_id = self._id_factory()
@@ -293,6 +304,7 @@ class ApprovalService:
             action=action,
             policy_version=policy_version,
             evidence=evidence,
+            display={} if display is None else display,
             requested_at=requested_at,
             expires_at=expires_at,
         )
@@ -453,8 +465,14 @@ class ApprovalService:
 
     def _expire_if_needed(self, request: ApprovalRequest) -> ApprovalRequest:
         now = self._clock()
-        if request.state in {ApprovalState.PENDING, ApprovalState.ESCALATED} and (
-            now >= request.expires_at
+        if (
+            request.state
+            in {
+                ApprovalState.PENDING,
+                ApprovalState.ESCALATED,
+                ApprovalState.APPROVED,
+            }
+            and now >= request.expires_at
         ):
             return self._transition(
                 request,

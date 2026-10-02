@@ -137,6 +137,7 @@ class ExecutionContext:
         expected_effect: str | None = None,
         approval_id: str | None = None,
         conditions: Mapping[str, Any] | None = None,
+        approval_context: Mapping[str, Any] | None = None,
     ) -> ToolResult:
         """Request one authorized bounded call; model suggestions grant no authority."""
         call = ToolCall(
@@ -154,6 +155,7 @@ class ExecutionContext:
             expected_effect=expected_effect,
             approval_id=approval_id or self.pending_approval_id,
             conditions={} if conditions is None else conditions,
+            approval_context={} if approval_context is None else approval_context,
         )
         validation_error = call.validation_error()
         if validation_error is not None:

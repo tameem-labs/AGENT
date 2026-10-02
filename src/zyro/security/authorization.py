@@ -135,10 +135,12 @@ class ToolAuthorizationService:
                 action=action,
                 policy_version=risk.policy_version,
                 expires_at=self._clock() + self._approval_ttl,
+                workflow_id=call.workflow_id,
                 evidence=(
                     f"permission_decision:{permission.decision_id}",
                     f"risk:{definition.risk_class.value}",
                 ),
+                display=call.approval_context,
             )
             return ToolAuthorizationDecision(
                 status=ToolAuthorizationStatus.APPROVAL_PENDING,

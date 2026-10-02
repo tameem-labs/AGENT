@@ -118,10 +118,13 @@ class ToolCall:
     expected_effect: str | None = None
     approval_id: str | None = None
     conditions: Mapping[str, Any] = field(default_factory=dict)
+    approval_context: Mapping[str, Any] = field(default_factory=dict)
+    workflow_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "arguments", _freeze_mapping(self.arguments))
         object.__setattr__(self, "conditions", _freeze_mapping(self.conditions))
+        object.__setattr__(self, "approval_context", _freeze_mapping(self.approval_context))
 
     def validation_error(self) -> str | None:
         for field_name in (
@@ -136,6 +139,7 @@ class ToolCall:
             if not isinstance(value, str) or not value.strip():
                 return f"{field_name} must be a non-empty string"
         for field_name in (
+            "workflow_id",
             "requester_id",
             "capability",
             "target",
@@ -148,8 +152,9 @@ class ToolCall:
                 return f"{field_name} must be non-empty when supplied"
         try:
             _reject_sensitive_metadata(self.conditions)
+            _reject_sensitive_metadata(self.approval_context)
         except InvalidToolDefinitionError:
-            return "tool call conditions cannot contain secret fields"
+            return "tool call conditions and approval context cannot contain secret fields"
         return None
 
 
@@ -290,6 +295,7 @@ class ToolResult:
     permission_id: str | None = None
     approval_id: str | None = None
     policy_version: str | None = None
+    workflow_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.status is ToolResultStatus.SUCCESS:

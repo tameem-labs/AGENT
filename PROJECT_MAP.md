@@ -2,7 +2,7 @@
 
 ## Purpose
 
-ZYRO is designed as one canonical personal Executive backed by replaceable models, bounded tools, explicit orchestration, distinct memory/state/knowledge layers, policy-controlled execution, and independent verification. Current code implements the Executive/Task/Agent runtime, model/tool routing, scoped authorization, verification, a bounded Freelancing qualification consumer, durable local communication, selective historical Memory, owner-controlled current State, versioned reference Knowledge, and transient bounded Context Assembly; later documented capabilities remain specifications rather than implementations.
+ZYRO is designed as one canonical personal Executive backed by replaceable models, bounded tools, explicit orchestration, distinct memory/state/knowledge layers, policy-controlled execution, and independent verification. Current code implements the Executive/Task/Agent runtime, model/tool routing, scoped authorization and approval, durable communication, Memory/State/Knowledge/Context, Recovery/Observability/Resources, and a bounded Freelancing loop from qualification through exact-message outreach, reply intake, project delivery, QA, and handoff. Real credentialed outbound providers and later production-hardening capabilities remain adapters or specifications rather than implemented integrations.
 
 ## Repository structure
 
@@ -24,7 +24,7 @@ ZYRO is designed as one canonical personal Executive backed by replaceable model
 | `src/zyro/tools/` | Bounded definitions, calls/results, handlers, in-process registry, validation, and executor |
 | `src/zyro/execution/` | Independent verification protocol and basic structural runtime verifier |
 | `src/zyro/security/` | Scoped permission, risk-path policy, action-bound approval, and tool authorization composition |
-| `src/zyro/domains/freelancing/` | Freelancing lead contracts, versioned policies, deterministic evaluators, Core-agent handlers, authoritative revisioned store, verifier, and qualification pipeline |
+| `src/zyro/domains/freelancing/` | Qualification plus immutable outreach, authorized idempotent channel execution, normalized replies, revisioned projects, resource-gated canonical delivery Tasks, QA, and handoff |
 | `src/zyro/interfaces/` | Explicit future interface boundary; not yet implemented |
 | `tests/unit/` | Isolated component behavior and failure cases |
 | `tests/integration/` | Behavior across package boundaries and runtime smoke checks |
@@ -65,4 +65,5 @@ The delivery sequence labels the scaffold **Phase 1 — Foundation** and Executi
 - **Delivery Phase 6 / Roadmap Phase 6:** Communication + Durable Event Bus — implemented with local SQLite persistence, bounded synchronous delivery, and Phase 4 authorization reuse.
 - **Delivery Phase 7 / Roadmap Phase 7:** Memory + State + Knowledge + Context — implemented with separate local SQLite stores, deterministic bounded retrieval, and transient Context Assembly.
 - **Delivery Phase 8:** Recovery + Observability + Resource Hardening — implemented with deterministic non-authoritative recovery, redacted SQLite traces, and local durable limits/leases/accounting.
-- **Later roadmap phases:** outreach, replies, delivery, QA, handoff, and end-to-end workflows — documented only until explicitly requested.
+- **Combined Phase 9 + Phase 10 Round 1:** Outreach + External Actions + Client Replies + Delivery + QA + Handoff — implemented as a bounded local Freelancing lifecycle using existing authority/runtime services and adapter-only external channels.
+- **Next major round:** Final E2E Hardening / Integration / Production Readiness — not started.

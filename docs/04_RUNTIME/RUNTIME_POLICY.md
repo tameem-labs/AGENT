@@ -29,3 +29,9 @@ Metadata and structured logs are recursively redacted before persistence. Except
 ## Deployment limits
 
 These services are synchronous and local SQLite implementations. They provide no distributed scheduler, worker fleet, broker, cloud coordination, monitoring SaaS, or autonomous self-healing. Product composition must explicitly invoke admission, accounting, recovery, and tracing boundaries.
+
+## External actions and delivery
+
+Outbound Freelancing actions are admitted only inside an already authorized Tool handler. Tool concurrency leases and configured provider rate windows are checked before adapter invocation and released afterward. A capacity/rate failure performs no external action. Delivery Tasks reserve task and agent capacity before canonical Executive execution; queued work remains unexecuted.
+
+The durable external-action ledger claims a stable action identity before adapter invocation. A repeated terminal/uncertain identity returns its recorded result without calling the adapter. Process restart converts unresolved `DISPATCHING` state to `UNCERTAIN`; the Phase 8 Recovery policy permits only reconciliation when available, otherwise `MARK_UNCERTAIN`. It never turns timeout into success or authorizes a resend. Observability records operational IDs and statuses with bounded metadata, not exact reply bodies, credentials, or secret provider data.

@@ -164,6 +164,7 @@ class ToolExecutor:
                 agent_id=call.agent_id,
                 instance_id=call.instance_id,
                 correlation_id=call.correlation_id,
+                workflow_id=call.workflow_id,
                 output=handler_result.output,
                 error=handler_result.error,
                 permission_decision_id=authorization.permission_decision_id,
@@ -197,6 +198,7 @@ class ToolExecutor:
             agent_id=call.agent_id,
             instance_id=call.instance_id,
             correlation_id=call.correlation_id,
+            workflow_id=call.workflow_id,
             output=handler_result.output,
             permission_decision_id=authorization.permission_decision_id,
             permission_id=authorization.permission_id,
@@ -236,6 +238,7 @@ class ToolExecutor:
             agent_id=call.agent_id,
             instance_id=call.instance_id,
             correlation_id=call.correlation_id,
+            workflow_id=call.workflow_id,
             error=error,
             permission_decision_id=(
                 None if authorization is None else authorization.permission_decision_id
