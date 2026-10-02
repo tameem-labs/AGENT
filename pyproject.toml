@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zyro-ai"
+version = "0.1.0"
+description = "Engineering foundation for the ZYRO personal executive AI system"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Proprietary"}
+authors = [{name = "Tameem Labs"}]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.11,<2",
+  "pytest>=8.3,<9",
+  "ruff>=0.6,<1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["zyro*"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers -ra"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src", "tests"]
+mypy_path = "src"
