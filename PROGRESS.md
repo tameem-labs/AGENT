@@ -10,11 +10,78 @@ This file is a chronological, append-only implementation record. Add new entries
 
 ## Current status
 
-- **Current delivery phase:** Phase 4 — Permission + Approval + Verification — **VERIFIED**
-- **Architecture-roadmap equivalent:** Phase 3 — Permission + Approval + Verification
-- **Next permitted work:** Only the next explicitly requested roadmap phase
+- **Current delivery phase:** Phase 5 — Freelancing Qualification + Scoring — **VERIFIED**
+- **Architecture-roadmap equivalent:** Phase 5 — Qualification + Scoring
+- **Next permitted work:** Only the next explicitly requested roadmap phase; Phase 6 was not started
 - **Known blockers:** None
-- **Explicitly not implemented:** real external model adapters/tools, approval UI or identity authentication, durable/distributed authorization, advanced semantic or real-world verification, memory/state/knowledge behavior, workflows, and domain business logic remain **DOCUMENTED** only.
+- **Explicitly not implemented:** lead finding/research integrations, outreach, email, CRM, client replies, delivery, QA, handoff, durable event bus, real external model/tools, memory/state/knowledge/context systems, browser/computer control, voice/camera, and distributed infrastructure remain **DOCUMENTED** only.
+
+---
+
+## 2026-10-02 02:32:56 UTC — Phase 5: Freelancing Qualification + Scoring
+
+### Status
+
+**IMPLEMENTED, TESTED, VERIFIED**
+
+### Inspection result
+
+- The repository contained only `domains/freelancing/FREELANCING_SPEC.md`; it had no existing Freelancing source package, lead contract, lead store, event seam, agents, or Phase 5 tests to duplicate.
+- The domain specification defines the Lead Research/Qualification/Scoring roles, pipeline order, and `LEAD_QUALIFIED` event but no business thresholds or factor weights. Implementation therefore adds generic declarative policies only; tests supply explicit fixture criteria and weights.
+- No competing state/event implementation existed. The phase adds only the bounded domain aggregate store and minimal non-durable Core event publication seam needed by this slice. It does not implement lead discovery/research integrations or a durable event bus.
+
+### What was implemented
+
+- Added immutable non-secret lead, source-reference, research-evidence, validation, qualification, scoring, contribution, provenance, and pipeline result contracts with distinct `QUALIFIED`, `NOT_QUALIFIED`, `INSUFFICIENT_INFORMATION`, and `INVALID` semantics.
+- Added explicit versioned validation, qualification, and scoring policies. Qualification predicates support configured presence, equality, minimum, maximum, allowed values, evidence requirements, and allowed source types; scoring uses configured predicates and non-negative weights without a universal threshold.
+- Added deterministic pure evaluators that capture observed values, expected conditions, source references, uncertainty, criterion outcomes, factor weights/contributions, total score, lead revision, and policy version without fabricating missing information.
+- Added validation for lifecycle compatibility, required fields, research evidence, source validity/type, field/evidence consistency, conflicting evidence, and nested secret-field rejection.
+- Added a first-seen in-process lead store with canonical duplicate suppression, immutable revisions, compare-and-set stage commits, explicit stale/invalid-state outcomes, and task/verification/policy provenance. Stale or conflicting writes never overwrite authoritative state.
+- Added and registered bounded Lead Validation, Lead Qualification, and Lead Scoring handlers through the existing Agent Registry and Agent Runtime. Qualification/scoring are pure calculations, invoke no external tools/models, grant no permission/approval, and do not mutate Core Task state.
+- Added an independent Freelancing verifier that reproduces each stage result against the same authoritative lead revision and policy. Changed revisions or mismatched results fail verification before domain state commit.
+- Added the canonical `LEAD_FOUND → validation Task → qualification Task → scoring Task → verification → authoritative state → LEAD_QUALIFIED` pipeline using `ZyroExecutive`; later stages run only after prior verified completion.
+- Added a minimal idempotent in-process Core event publication seam matching the documented event shape while explicitly refusing durable-delivery claims. `LEAD_QUALIFIED` is published only after final verified compare-and-set state commit.
+- Added deterministic duplicate/replay behavior: a canonical duplicate creates no stage tasks, state writes, score, or event.
+- Updated package metadata to 0.5.0 and documented only the implemented Phase 5 slice.
+
+### Files created or modified
+
+- Core event seam: `src/zyro/core/events.py`
+- Freelancing domain: `src/zyro/domains/freelancing/{contracts,policies,evaluation,state,agents,verification,pipeline}.py` and package exports
+- Tests: `tests/unit/test_freelancing_{evaluation,state}.py`, `tests/integration/test_freelancing_pipeline.py`, `tests/architecture/test_phase_five_freelancing_boundaries.py`, runtime version smoke
+- Documentation/configuration: `README.md`, `PROJECT_MAP.md`, `PROGRESS.md`, `pyproject.toml`, package version export
+
+### Tests and verification
+
+- `.venv/bin/pytest -q` — **TESTED**, 153 tests passed, including all Phase 1–4 regressions and Phase 5 validation, qualification, scoring, pipeline, state, verification, idempotency, security, and architecture paths.
+- `.venv/bin/ruff check .` — **VERIFIED**, all checks passed.
+- `.venv/bin/ruff format --check .` — **VERIFIED**, all 93 checked Python files formatted.
+- `.venv/bin/mypy` — **VERIFIED**, no issues found in 75 source/test files.
+- `.venv/bin/python -m pip install -e '.[dev]'` — **VERIFIED**, editable 0.5.0 package installation succeeded.
+- `.venv/bin/python -m zyro` plus import/version/domain-agent smoke — **VERIFIED**, succeeded without network, API key, external service, website, email, CRM, or human interaction.
+- Secret-path/credential-assignment scan and `git diff --check` — **VERIFIED**, no forbidden tracked secret path, hard-coded source credential assignment, or whitespace error was detected.
+
+### Verified failure and boundary behavior
+
+- Invalid lifecycle state, missing required fields/evidence, invalid source references/types, conflicting evidence, nested secret fields, qualification failures, missing criterion information, multiple failures, partial/zero scores, duplicate leads, stale revisions, and invalid state transitions are explicit and deterministic.
+- Qualification and scoring preserve separate policy versions and evidence. The same revision/policy reproduces the same result; changed policies can change outcomes without reinterpreting stored old results.
+- Score is output only and exposes no permission, approval, or authorization state.
+- Failed/unknown verification prevents the relevant state commit and final event. Changed authoritative revision fails reproduction verification. Failed qualification verification prevents scoring; failed scoring verification prevents final state/event.
+- Final publication observes `LEAD_QUALIFIED` authoritative state. Duplicate processing produces no duplicate tasks, writes, score, or event.
+- Architecture guards verify that domain agents do not choose providers, self-approve, import/mutate Core Task, call tool handlers, redefine Task, or import forbidden future-phase systems.
+
+### Known limitations
+
+- Lead input and controlled research evidence must be supplied by callers; no lead finding, scraping, marketplace integration, or research agent integration exists.
+- Policies are injected in-process; there is no durable policy registry or migration/re-evaluation engine. Pending/insufficient leads are not automatically re-evaluated under new policy versions.
+- Lead state and events are process-local and non-durable. Publication failure after a committed final state is reported explicitly but no durable recovery/outbox exists.
+- The bounded event seam records publications only; it has no subscribers, acknowledgements, retries, or cross-process delivery.
+- Verification proves deterministic policy reproduction against the authoritative revision, not truth of external research claims.
+- No outreach decision, contact action, permission grant, approval, email, CRM, client reply, delivery, QA, or handoff behavior is included.
+
+### Next permitted phase
+
+Stop after Phase 5. Do not start Phase 6 durable communication/event bus, outreach, or any later subsystem without an explicit request.
 
 ---
 

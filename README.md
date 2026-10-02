@@ -2,9 +2,9 @@
 
 ZYRO is specified as a personal Executive AI, computer agent, and AI organization. The user will interact with one canonical Executive while internal components coordinate domains, agents, models, tools, workflows, state, knowledge, security, execution, and verification.
 
-This repository has completed **Phase 4 — Permission + Approval + Verification** in the delivery sequence. It implements the Executive/Task/Agent runtime, provider-independent model routing, bounded tools, scoped standing permission, action-bound human approval state, mandatory pre-handler authorization, approval waiting, honest unknown outcomes, and structured verification evidence. It does **not** include a real external model adapter, approval UI, durable/distributed authorization, advanced semantic verification, memory, workflows, or domain business logic.
+This repository has completed **Phase 5 — Freelancing Qualification + Scoring** in the delivery sequence. It implements the Executive/Task/Agent runtime, provider-independent model routing, bounded tools, Phase 4 authorization controls, and a deterministic Freelancing slice for lead validation, policy-driven qualification, policy-driven scoring, independent reproduction verification, compare-and-set lead state, duplicate suppression, and bounded `LEAD_QUALIFIED` publication. It does **not** include lead finding/research integrations, outreach, email, CRM, a durable event bus, real external model/tool adapters, memory, knowledge, context assembly, or later delivery-domain behavior.
 
-> Naming note: the existing architecture roadmap calls Permission + Approval + Verification “Phase 3,” while the delivery sequence calls it “Phase 4.” See `PROGRESS.md` for actual implementation status.
+> Naming note: historical delivery phases 1–4 were offset by one from roadmap phases 0–3. The requested qualification/scoring milestone corresponds to roadmap Phase 5; `PROGRESS.md` records actual implementation status and the intentionally bounded prerequisites included in this slice.
 
 ## Requirements
 
@@ -38,8 +38,12 @@ Core contracts are located at:
 - `src/zyro/tools/` — bounded definitions/calls/results, registry, schema validation, and executor
 - `src/zyro/runtime/agent_runtime.py` — one bounded agent attempt with optional model/tool service boundaries
 - `src/zyro/execution/verification.py` — independent structural verification protocol
+- `src/zyro/domains/freelancing/` — lead contracts, policies, evaluators, Core agents, revisioned state, verification, and qualification pipeline
+- `src/zyro/core/events.py` — minimal idempotent in-process publication seam; not a durable event bus
 
-Providers and tools are registered programmatically with non-secret definitions. The repository ships no product provider adapter and requires no API key. Deterministic providers and tools under `tests/` are test infrastructure only. Model-requested tool calls are inert data: every supported tool execution passes through a required, separate authorizer before the handler. Capability, risk classification, standing permission, action approval, execution, verification, and Task completion remain distinct. Missing or stale authority fails closed; approval-required actions return a bound pending approval and do not invoke the handler. Structural verification proves only runtime consistency, never semantic or real-world correctness.
+Providers and tools are registered programmatically with non-secret definitions. The repository ships no product provider adapter and requires no API key. Deterministic providers, tools, and lead fixtures under `tests/` are test infrastructure only. Model-requested tool calls are inert data: every supported tool execution passes through a required, separate authorizer before the handler. Capability, risk classification, standing permission, action approval, execution, verification, and Task completion remain distinct.
+
+Freelancing qualification/scoring is pure policy evaluation and does not invoke a tool or grant authority. The Lead Qualification and Lead Scoring agents run through the canonical Agent Runtime and Task lifecycle. Each stage is independently reproduced against the same authoritative lead revision and policy before a compare-and-set state write. A score remains business output only. `LEAD_QUALIFIED` is published only after the final verified state commit, through a non-durable in-process seam.
 
 ## Quality checks
 
@@ -67,7 +71,8 @@ Safe defaults need no local configuration. ZYRO reads these optional process env
 - `tests/` — executable unit, integration, and architecture checks
 - `config/` — non-secret configuration examples/defaults
 - `docs/` — product, architecture, contract, policy, and development sources
-- `domains/` — domain specifications; no domain implementation yet
+- `domains/` — domain specifications
+- `src/zyro/domains/` — implemented bounded domain consumers of Core
 - `PROJECT_MAP.md` — directory ownership, architecture layers, and source-of-truth rules
 - `PROGRESS.md` — append-only implementation and verification history
 
