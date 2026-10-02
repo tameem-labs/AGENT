@@ -58,8 +58,20 @@ class EncryptedCredentialStore:
                 expires_at TEXT NOT NULL,
                 consumed_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS encrypted_secrets (
+                secret_name TEXT PRIMARY KEY,
+                nonce BLOB NOT NULL,
+                ciphertext BLOB NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS local_settings (
+                setting_name TEXT PRIMARY KEY,
+                setting_value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             """
         )
+        self._connection.execute("PRAGMA user_version=2")
         self._connection.commit()
 
     def _load_or_create_key(self) -> bytes:
@@ -73,6 +85,59 @@ class EncryptedCredentialStore:
         with os.fdopen(descriptor, "wb") as output:
             output.write(key)
         return key
+
+    def set_secret(self, name: str, value: str) -> None:
+        """Encrypt an application secret; callers may query presence, never list values."""
+        if not name.strip() or not value:
+            raise ValueError("secret name and value must not be empty")
+        nonce = os.urandom(12)
+        ciphertext = self._cipher.encrypt(nonce, value.encode(), name.encode())
+        with self._connection:
+            self._connection.execute(
+                "INSERT INTO encrypted_secrets VALUES(?,?,?,datetime('now')) "
+                "ON CONFLICT(secret_name) DO UPDATE SET nonce=excluded.nonce,"
+                "ciphertext=excluded.ciphertext,updated_at=excluded.updated_at",
+                (name, nonce, ciphertext),
+            )
+
+    def has_secret(self, name: str) -> bool:
+        return (
+            self._connection.execute(
+                "SELECT 1 FROM encrypted_secrets WHERE secret_name=?", (name,)
+            ).fetchone()
+            is not None
+        )
+
+    def secret(self, name: str) -> str:
+        row = self._connection.execute(
+            "SELECT nonce,ciphertext FROM encrypted_secrets WHERE secret_name=?", (name,)
+        ).fetchone()
+        if row is None:
+            raise KeyError("secret is not configured")
+        return self._cipher.decrypt(
+            bytes(row["nonce"]), bytes(row["ciphertext"]), name.encode()
+        ).decode()
+
+    def delete_secret(self, name: str) -> None:
+        with self._connection:
+            self._connection.execute("DELETE FROM encrypted_secrets WHERE secret_name=?", (name,))
+
+    def set_setting(self, name: str, value: str) -> None:
+        if not name.strip():
+            raise ValueError("setting name must not be empty")
+        with self._connection:
+            self._connection.execute(
+                "INSERT INTO local_settings VALUES(?,?,datetime('now')) "
+                "ON CONFLICT(setting_name) DO UPDATE SET setting_value=excluded.setting_value,"
+                "updated_at=excluded.updated_at",
+                (name, value),
+            )
+
+    def setting(self, name: str, default: str | None = None) -> str | None:
+        row = self._connection.execute(
+            "SELECT setting_value FROM local_settings WHERE setting_name=?", (name,)
+        ).fetchone()
+        return default if row is None else str(row["setting_value"])
 
     def save_connection(self, connection: IntegrationConnection, token: OAuthTokenSet) -> None:
         payload = json.dumps(

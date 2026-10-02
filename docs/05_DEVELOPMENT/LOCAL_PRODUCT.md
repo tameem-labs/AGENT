@@ -16,7 +16,7 @@ Browser → authenticated FastAPI → ZyroApplication → durable Workflow
 → configured Provider → structural Verifier → Task/Workflow projections → UI
 ```
 
-The built-in provider is `zyro.local-assistant`, labeled local development. It returns a bounded deterministic product response and does not claim internet research, a live language model, or external execution. Model/provider composition belongs to `models.router.build_model_router`; Application code does not own registries.
+Google Gemini is the default provider after the owner validates a key in first-run setup or Settings. The REST adapter retrieves the key only from the encrypted backend vault, uses an `x-goog-api-key` header, applies a bounded timeout, classifies credential/quota/network/context/model/response failures, reports provider usage to Resource accounting, and permits one safe bounded fallback for model-only work. `zyro.local-assistant` remains an explicitly SIMULATED deterministic fallback and does not claim internet research or external execution. Model/provider composition belongs to `models.router.build_model_router`; Application code does not own registries.
 
 Task resource defaults are 50,000 tokens and Workflow defaults are 300,000. Unknown provider usage does not become zero. A Tool call passes registry validation, Tool Authorization, short-lived dispatch grant claim/revalidation, Resource admission where composed, handler timeout, result validation, verification hook, trace, and Recovery classification.
 

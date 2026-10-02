@@ -25,7 +25,7 @@ ZYRO is designed as one canonical personal Executive backed by replaceable model
 | `src/zyro/resources/` | Configurable token/concurrency/rate controls, fair queues, expiring leases, durable usage/hard stops, and narrow Recovery integration |
 | `src/zyro/agents/` | Agent Definition, Agent Instance, bounded handler contract, and in-process registry |
 | `src/zyro/runtime/` | Process bootstrap plus Agent Runtime with narrow model/tool invocation boundaries |
-| `src/zyro/models/` | Provider-independent definitions, requirements, results, registries, provider contract, and deterministic router |
+| `src/zyro/models/` | Provider-independent definitions, requirements, results, registries, deterministic router, bounded fallback, and encrypted-key Gemini REST adapter |
 | `src/zyro/tools/` | Bounded definitions, calls/results, handlers, in-process registry, validation, and executor |
 | `src/zyro/execution/` | Independent verification protocol and basic structural runtime verifier |
 | `src/zyro/security/` | Scoped permission, risk-path policy, action-bound approval, and tool authorization composition |

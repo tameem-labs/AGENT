@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from zyro.api.app import create_app
@@ -18,7 +19,14 @@ def authenticate_existing(client: TestClient) -> str:
 
 def authenticate(client: TestClient) -> str:
     assert client.post("/api/auth/setup", json={"password": PASSWORD}).status_code == 201
-    return authenticate_existing(client)
+    csrf = authenticate_existing(client)
+    completed = client.post(
+        "/api/setup/complete",
+        json={"use_local_fallback": True},
+        headers={"X-ZYRO-CSRF": csrf},
+    )
+    assert completed.status_code == 200
+    return csrf
 
 
 def test_authenticated_ui_api_runs_real_executive_workflow_and_resource_path(
@@ -53,6 +61,16 @@ def test_authenticated_ui_api_runs_real_executive_workflow_and_resource_path(
         connection = sqlite3.connect(tmp_path / "product" / "resources.sqlite")
         assert connection.execute("SELECT SUM(units) FROM usage_events").fetchone()[0] > 0
         connection.close()
+        for name in (
+            "identity.sqlite",
+            "integrations.sqlite",
+            "application.sqlite",
+            "workflows.sqlite",
+            "resources.sqlite",
+        ):
+            connection = sqlite3.connect(tmp_path / "product" / name)
+            assert connection.execute("PRAGMA user_version").fetchone()[0] >= 1
+            connection.close()
 
 
 def test_local_authentication_csrf_logout_and_development_oauth(tmp_path: Path) -> None:
@@ -101,3 +119,11 @@ def test_local_authentication_csrf_logout_and_development_oauth(tmp_path: Path) 
 
         assert client.post("/api/auth/logout", headers={"X-ZYRO-CSRF": csrf}).status_code == 204
         assert client.get("/api/auth/me").status_code == 401
+
+
+def test_startup_fails_closed_on_corrupt_existing_database(tmp_path: Path) -> None:
+    data_dir = tmp_path / "product"
+    data_dir.mkdir()
+    (data_dir / "application.sqlite").write_bytes(b"not a sqlite database")
+    with pytest.raises(RuntimeError, match="integrity check failed"):
+        create_app(data_dir)

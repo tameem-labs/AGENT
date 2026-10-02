@@ -122,6 +122,7 @@ class SQLiteResourceManager:
                     ON rate_requests(resource_id,requested_at);
                 """
             )
+            self._connection.execute("PRAGMA user_version=1")
             self._connection.commit()
             self.reconcile_leases()
         except sqlite3.Error as error:

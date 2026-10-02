@@ -69,6 +69,7 @@ class WorkflowStore:
                 ON workflow_history(workflow_id, history_id);
             """
         )
+        self._connection.execute("PRAGMA user_version=1")
         self._connection.commit()
         self.recover_running()
 

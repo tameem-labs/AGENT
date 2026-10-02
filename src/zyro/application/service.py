@@ -26,6 +26,7 @@ from zyro.models.contracts import (
     ModelResultStatus,
     ModelUsage,
 )
+from zyro.models.gemini import GeminiProvider
 from zyro.models.router import build_model_router
 from zyro.resources import ResourceAwareModelInvoker, ResourcePolicy, SQLiteResourceManager
 from zyro.runtime.agent_runtime import AgentRuntime
@@ -88,7 +89,12 @@ class ExecutiveChatHandler:
             assert result.error is not None
             return AgentExecution.failure(result.error, model_results=(result,))
         return AgentExecution.success(
-            {"message": result.content, "model_id": result.model_id, "local": True},
+            {
+                "message": result.content,
+                "model_id": result.model_id,
+                "provider_id": result.provider_id,
+                "local": result.provider_id == "zyro.local",
+            },
             model_results=(result,),
         )
 
@@ -100,6 +106,7 @@ class ZyroApplication:
         self,
         data_dir: str | Path,
         integrations: IntegrationService,
+        gemini: GeminiProvider,
     ) -> None:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -113,14 +120,27 @@ class ZyroApplication:
             frozenset({"conversation", "planning"}),
             frozenset({"text"}),
             32_000,
-            ModelComplexity.MEDIUM,
+            ModelComplexity.COMPLEX,
             supports_structured_output=True,
             deployment=ModelDeployment.LOCAL,
             input_cost_per_million=0,
             output_cost_per_million=0,
             typical_latency_ms=20,
         )
-        router = build_model_router((local_model,), (LocalAssistantProvider(),))
+        gemini_model = ModelDefinition(
+            gemini.model_id,
+            gemini.provider_id,
+            "Google Gemini 2.5 Flash",
+            frozenset({"conversation", "planning"}),
+            frozenset({"text"}),
+            1_048_576,
+            ModelComplexity.COMPLEX,
+            supports_tool_calling=True,
+            supports_structured_output=True,
+            deployment=ModelDeployment.CLOUD,
+            typical_latency_ms=1_500,
+        )
+        router = build_model_router((gemini_model, local_model), (gemini, LocalAssistantProvider()))
         model_invoker = ResourceAwareModelInvoker(router, self.resources)
         agents = AgentRegistry()
         self.executive_agent = AgentDefinition(
@@ -146,6 +166,7 @@ class ZyroApplication:
         self.engine = WorkflowEngine(self.workflows)
         self.engine.register("assistant.respond", self._run_assistant_step)
         self.integrations = integrations
+        self.gemini = gemini
 
     def chat(
         self,
@@ -195,11 +216,11 @@ class ZyroApplication:
         if not tasks:
             raise RuntimeError("workflow completed without a canonical Task projection")
         task = tasks[0]
-        response_body = (
-            str(task["result"].get("message"))
-            if isinstance(task["result"], dict)
-            else "ZYRO could not produce a response."
-        )
+        response_body = "ZYRO could not produce a response."
+        if isinstance(task["result"], dict) and task["result"].get("message"):
+            response_body = str(task["result"]["message"])
+        elif isinstance(task.get("error"), dict) and task["error"].get("message"):
+            response_body = str(task["error"]["message"])
         self.store.add_message(
             str(uuid4()),
             conversation,
@@ -285,7 +306,18 @@ class ZyroApplication:
         return {
             "health": "healthy",
             "runtime": "local",
-            "model_providers": [{"id": "zyro.local", "status": "CONNECTED", "kind": "LOCAL"}],
+            "model_providers": [
+                self.gemini.status(),
+                {
+                    "provider_id": "zyro.local",
+                    "display_name": "ZYRO Local Development Assistant",
+                    "model_id": "zyro-local-assistant",
+                    "status": "SIMULATED",
+                    "configured": True,
+                    "available": True,
+                    "capabilities": ["conversation", "planning"],
+                },
+            ],
             "voice": {"status": "NOT_CONFIGURED"},
             "browser": {"status": "UNAVAILABLE"},
             "running_work": sum(item.status is WorkflowStatus.RUNNING for item in workflows),

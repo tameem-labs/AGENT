@@ -64,6 +64,7 @@ class ApplicationStore:
                 ON task_projection(status, updated_at DESC);
             """
         )
+        self._connection.execute("PRAGMA user_version=1")
         self._connection.commit()
 
     def ensure_conversation(self, conversation_id: str, title: str) -> None:

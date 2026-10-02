@@ -7,6 +7,41 @@ import os
 from pathlib import Path
 
 
+def _startup_state(data_dir: Path) -> tuple[str, str]:
+    """Read only non-secret startup diagnostics without initializing a second runtime."""
+    import sqlite3
+
+    owner = "FIRST RUN REQUIRED"
+    provider = "GEMINI NOT CONFIGURED"
+    identity_path = data_dir / "identity.sqlite"
+    integration_path = data_dir / "integrations.sqlite"
+    if identity_path.exists():
+        try:
+            connection = sqlite3.connect(identity_path)
+            try:
+                if connection.execute("SELECT 1 FROM local_identity LIMIT 1").fetchone():
+                    owner = "OWNER CONFIGURED"
+            finally:
+                connection.close()
+        except sqlite3.Error:
+            owner = "OWNER STATE REQUIRES CHECK"
+    if integration_path.exists():
+        try:
+            connection = sqlite3.connect(integration_path)
+            try:
+                row = connection.execute(
+                    "SELECT 1 FROM encrypted_secrets WHERE secret_name=? LIMIT 1",
+                    ("models.gemini.api_key",),
+                ).fetchone()
+                if row:
+                    provider = "GEMINI CONFIGURED"
+            finally:
+                connection.close()
+        except sqlite3.Error:
+            provider = "PROVIDER STATE REQUIRES CHECK"
+    return owner, provider
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="zyro", description="ZYRO local Personal Executive")
     subcommands = parser.add_subparsers(dest="command")
@@ -37,7 +72,9 @@ def main() -> None:
         os.environ["ZYRO_DATA_DIR"] = str(args.data_dir)
         import uvicorn
 
+        owner_state, provider_state = _startup_state(Path(args.data_dir))
         print(f"ZYRO is starting at http://{args.host}:{args.port}")
+        print(f"Safe diagnostics: {owner_state} · {provider_state} · data={args.data_dir}")
         uvicorn.run("zyro.api.app:app", host=args.host, port=args.port, reload=False)
         return
     data_dir = Path(os.environ.get("ZYRO_DATA_DIR", ".zyro"))

@@ -1,6 +1,6 @@
 # Production-readiness assessment
 
-Assessment date: 2026-10-02. Package version: 0.11.0.
+Assessment date: 2026-10-02. Package version: 0.12.0.
 
 This matrix reports demonstrated behavior. A passing local test does not imply that an unconfigured external provider exists.
 
@@ -14,7 +14,7 @@ This matrix reports demonstrated behavior. A passing local test does not imply t
 | Dispatch TOCTOU | PARTIAL | Short-lived signed one-use grant is revalidated and atomically claimed immediately before handler | Claim means execution started; no atomic control over an external provider is claimed |
 | Verification authority | IMPLEMENTED | Signed evidence binds subject/action/Task/Workflow/source/reference/digest/verifier/time/method/result/trust | Local HMAC authority; provider-specific external verifiers remain adapters |
 | Tool execution | IMPLEMENTED | Authorization, grant claim, schema checks, configured timeout and UNKNOWN side-effect outcome | Blocking Python thread cannot be forcibly killed; no process sandbox |
-| Model Router/runtime | PARTIAL | Replaceable capability router plus actual Task/Workflow usage accounting and conservative unknown usage | Local deterministic provider only; invocation fallback and provider cancellation remain limited |
+| Model Router/runtime | IMPLEMENTED | Gemini REST adapter, encrypted key, server-side validation, capability routing, timeout/error classification, usage accounting, conservative unknown usage, and one bounded safe fallback | Gemini availability/quota is external; cancellation of an in-flight blocking HTTP request is timeout-bounded rather than provider-atomic |
 | Resource controls | IMPLEMENTED | 50,000/Task and 300,000/Workflow defaults, accounting, hard stops, concurrency, leases, queues, rate windows | SQLite single-process qualification; no distributed quota coordination |
 | Recovery | IMPLEMENTED | Finite deterministic decisions, durable operation/decision records, no blind uncertain-effect retry | Recovery decisions require caller composition |
 | Event Bus | IMPLEMENTED | Durable local at-least-once delivery, ACK identity, finite retry, ordering key and dead letters | No exactly-once execution, global ordering, or external broker |
@@ -35,4 +35,4 @@ This matrix reports demonstrated behavior. A passing local test does not imply t
 
 ## 1.0 readiness decision
 
-**NOT MET.** Version 0.11.0 is a usable local product. Production readiness still requires durable authenticated Permission/Approval composition, provider-specific OAuth and execution adapters, external verification, complete per-store migration registration, key rotation/backup operations, multi-process qualification, and deployment/security operations.
+**NOT MET.** Version 0.12.0 is a usable local product. Production readiness still requires durable authenticated Permission/Approval composition, provider-specific OAuth and execution adapters, external verification, complete per-store migration registration, key rotation/backup operations, multi-process qualification, and deployment/security operations.

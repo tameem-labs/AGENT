@@ -93,6 +93,7 @@ class LocalIdentityStore:
                 ON local_sessions(token_digest, expires_at);
             """
         )
+        self._connection.execute("PRAGMA user_version=1")
         self._connection.commit()
 
     @property

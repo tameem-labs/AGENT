@@ -181,9 +181,40 @@ class ModelRouter:
             )
         if result.succeeded:
             logger.info("model invocation succeeded")
-        else:
-            logger.warning("model invocation failed")
+            return result
+        logger.warning("model invocation failed")
+        if result.error is not None and result.error.retryable:
+            fallback = self._bounded_fallback(request, model)
+            if fallback is not None:
+                logger.warning("model invocation used one bounded fallback")
+                return fallback
         return result
+
+    def _bounded_fallback(
+        self, request: ModelRequest, failed_model: ModelDefinition
+    ) -> ModelResult | None:
+        """Try at most one other eligible model; model output remains non-authoritative data."""
+        candidates = sorted(
+            (
+                item
+                for item in self._models.list()
+                if item.model_id != failed_model.model_id
+                and self._is_compatible(item, request.requirements)
+            ),
+            key=lambda item: self._rank(item, request.requirements),
+        )
+        for model in candidates:
+            try:
+                provider = self._providers.get(model.provider_id)
+                if not provider.available:
+                    continue
+                result = provider.invoke(model, request)
+            except Exception:
+                return None
+            if isinstance(result, ModelResult) and self._matches_request(result, request, model):
+                return result
+            return None
+        return None
 
     def _is_compatible(
         self,

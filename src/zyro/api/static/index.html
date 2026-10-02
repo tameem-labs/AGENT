@@ -27,6 +27,25 @@
     </div>
   </div>
 
+  <div id="setup" class="auth-shell hidden">
+    <div class="setup-card">
+      <div class="brand-mark large">Z</div>
+      <p class="eyebrow">FIRST-RUN SETUP</p>
+      <h1>Connect your Executive.</h1>
+      <p class="muted">Your owner account is ready. Configure the default AI provider, then optionally connect personal services from Integration Center.</p>
+      <div class="setup-steps"><span class="complete">1 · OWNER</span><span class="active">2 · AI PROVIDER</span><span>3 · INTEGRATIONS</span></div>
+      <div class="provider-setup">
+        <div class="provider-title"><div><strong>Google Gemini</strong><small>Default cloud AI provider</small></div><span id="setup-provider-status" class="tag amber">NOT CONFIGURED</span></div>
+        <label>Model<select id="setup-model"><option value="gemini-2.5-flash">Gemini 2.5 Flash</option></select></label>
+        <label>Gemini API key<input id="gemini-key" type="password" autocomplete="off" placeholder="Stored encrypted — never returned to this browser"></label>
+        <div class="setup-actions"><a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Get Gemini API key ↗</a><button id="save-gemini" class="primary">Save &amp; test</button></div>
+        <p id="setup-error" class="error"></p>
+      </div>
+      <div class="setup-footer"><button id="use-local" class="secondary">Continue with simulated local provider</button><button id="finish-setup" class="primary" disabled>Finish setup →</button></div>
+      <p class="muted tiny">Google, GitHub, and Instagram account connections are optional and remain NOT CONFIGURED until their provider OAuth clients are available.</p>
+    </div>
+  </div>
+
   <div id="shell" class="app-shell hidden">
     <aside class="sidebar">
       <div class="brand"><div class="brand-mark">Z</div><div><strong>ZYRO</strong><small>PERSONAL EXECUTIVE</small></div></div>
@@ -68,7 +87,7 @@
       <section id="view-activity" class="view"><div class="section-head"><div><h3>Activity</h3><p>Correlated workflow and execution history.</p></div></div><div id="activity" class="timeline"></div></section>
       <section id="view-integrations" class="view"><div class="section-head"><div><h3>Integration center</h3><p>Connect provider accounts without exposing credentials to agents or the browser.</p></div><span class="secure-badge">▣ SERVER-SIDE OAUTH</span></div><div id="integrations" class="integration-grid"></div></section>
       <section id="view-status" class="view"><div class="section-head"><div><h3>System status</h3><p>Providers, runtime, queues, and capability health.</p></div></div><div id="system-status" class="status-layout"></div></section>
-      <section id="view-settings" class="view"><div class="section-head"><div><h3>Settings</h3><p>Local runtime and account preferences.</p></div></div><div class="settings-card"><div><h4>Session</h4><p>Authenticated local owner. Sessions expire after 12 hours.</p></div><span class="tag green">ACTIVE</span></div><div class="settings-card"><div><h4>Appearance</h4><p>ZYRO dark interface follows its local product theme.</p></div><span class="tag">DARK</span></div><div class="settings-card"><div><h4>Voice</h4><p>Provider-neutral voice is available when a provider is configured. Voice never grants authority.</p></div><span class="tag amber">NOT CONFIGURED</span></div></section>
+      <section id="view-settings" class="view"><div class="section-head"><div><h3>Settings</h3><p>Provider, local runtime, account, and capability settings.</p></div></div><div id="model-settings" class="stack"></div><div class="settings-card"><div><h4>Session</h4><p>Authenticated local owner. Sessions expire after 12 hours.</p></div><span class="tag green">ACTIVE</span></div><div class="settings-card"><div><h4>Appearance</h4><p>ZYRO dark interface follows its local product theme.</p></div><span class="tag">DARK</span></div><div class="settings-card"><div><h4>Voice</h4><p>Provider-neutral voice is available when a provider is configured. Voice never grants authority.</p></div><span class="tag amber">NOT CONFIGURED</span></div><div class="settings-card"><div><h4>Browser &amp; computer</h4><p>No control adapter or OS permission runtime is installed. Observation never grants authority.</p></div><span class="tag amber">UNAVAILABLE</span></div></section>
     </main>
   </div>
 

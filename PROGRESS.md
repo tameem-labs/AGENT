@@ -10,11 +10,42 @@ This file is a chronological, append-only implementation record. Add new entries
 
 ## Current status
 
-- **Current delivery phase:** Product Implementation Round 1 — authenticated local vertical product — **IMPLEMENTED AND TESTED**
-- **Architecture-roadmap equivalent:** Local UI/API/Workflow/Integration foundation over the canonical Executive runtime
-- **Next permitted work:** Provider-specific configuration and bounded adapters may be added only with explicit credentials and review.
-- **Known blockers:** Version 1.0 readiness remains blocked by absent credentialed production providers, durable production Permission/Approval service, deployment/TLS/HA operations, and multi-process qualification.
-- **Explicitly not implemented:** live Google/GitHub/Instagram/email/CRM/model providers, autonomous lead discovery, production browser/computer control, configured voice, payments/billing/contracts, unrestricted autonomous outreach, distributed/cloud deployment, monitoring SaaS, and production deployment operations remain **NOT CONFIGURED**, **ADAPTER ONLY**, **UNAVAILABLE**, or **NOT IMPLEMENTED**.
+- **Current delivery phase:** Final Round 2 — first-run provider setup and release hardening — **IMPLEMENTED AND TESTED**
+- **Architecture-roadmap equivalent:** Complete local product with optional real Gemini execution over the canonical Model Router
+- **Next permitted work:** Provider-specific OAuth/tool adapters may be added only with external developer credentials, official API access, and review.
+- **Known blockers:** Version 1.0 readiness remains blocked by durable production Permission/Approval service, configured external account providers, deployment/TLS/HA operations, and multi-process qualification.
+- **Explicitly not implemented:** live Google Account/Gmail/Drive/Calendar, GitHub, Instagram, email/CRM, autonomous lead discovery, production browser/computer control, configured voice, payments, distributed/cloud deployment, and monitoring SaaS remain **NOT CONFIGURED**, **ADAPTER ONLY**, **UNAVAILABLE**, or **NOT IMPLEMENTED**. Gemini is implemented but only **CONFIGURED** after owner-supplied key validation.
+
+---
+
+## 2026-10-02 — Final Round 2: provider setup and release hardening
+
+### Status
+
+**IMPLEMENTED AND TESTED; EXTERNAL ACCOUNT PROVIDERS REMAIN HONESTLY NOT CONFIGURED** — package advanced to **0.12.0**.
+
+### Implementation
+
+- Added a first-run UI after owner authentication for Gemini setup, official AI Studio key acquisition, server-side Save & Test, explicit simulated-local fallback, optional Integration Center continuation, and durable setup completion.
+- Added a real Google Gemini REST provider behind the existing Model Router. The provider uses the configured `gemini-2.5-flash` model, structured timeout/network/credential/quota/context/model/provider/malformed-response outcomes, provider token usage, and one bounded safe model fallback.
+- Extended the AES-GCM local vault with generic encrypted secrets and non-secret settings. Gemini keys are never returned by API, persisted in browser storage, logged, or placed in Task/Workflow/chat/Memory payloads. Invalid replacement keys are not persisted; Settings supports replace, validate, and remove.
+- Added provider/model state to Settings and System Status with CONFIGURED, NOT CONFIGURED, INVALID, SIMULATED, and UNAVAILABLE distinctions. Chat visibly identifies Gemini versus simulated local execution.
+- Added safe startup diagnostics for first-run owner and Gemini configuration without printing secrets, and documented PowerShell, Command Prompt, and Unix startup paths.
+- Preserved provider-neutral Integration/OAuth architecture and honest NOT CONFIGURED state for Google Account, Gmail, Drive, Calendar, GitHub, and Instagram where external developer credentials and approved API access are absent.
+
+### Validation
+
+- Added product tests for first-run setup, valid/invalid Gemini key handling, encrypted-at-rest key behavior, API non-disclosure, real router invocation through a safe transport double, removal, and local fallback.
+- Final release gate: **321 tests passed**; Ruff lint and format passed across 165 files; strict mypy passed across 165 source files; compileall, JavaScript syntax, import, distribution/package version 0.12.0, dependency, official Gemini-key-link, secret, and local credential-artifact checks passed.
+- Live Uvicorn first-run smoke passed at `0.0.0.0:8000`: UI 200, unauthenticated API 401, owner setup/login, Gemini NOT CONFIGURED state, explicit local fallback setup, Executive chat, canonical DONE Task, COMPLETED Workflow, model routing, Resource accounting, Verification, Integration API, five schema versions/integrity checks, backup, clean shutdown, and restart persistence all passed.
+- Gemini valid/invalid/quota behavior was exercised with safe injected transport doubles; no production key or external success is claimed.
+
+### Limitations
+
+- Gemini requires an owner-supplied Google AI Studio key and network/provider availability. No key is bundled.
+- Google Account OAuth and consequential Gmail/Drive/Calendar tools require external OAuth client registration and reviewed provider-specific adapters; definitions are NOT CONFIGURED rather than simulated.
+- GitHub and Instagram likewise remain NOT CONFIGURED. No unofficial scraping or credential harvesting was added.
+- Browser/computer and voice remain honest UNAVAILABLE/NOT CONFIGURED boundaries.
 
 ---
 

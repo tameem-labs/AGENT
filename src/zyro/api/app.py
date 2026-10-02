@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -20,6 +21,12 @@ from zyro.integrations import (
     IntegrationDefinition,
     IntegrationService,
     OAuthProvider,
+)
+from zyro.models.gemini import (
+    DEFAULT_GEMINI_MODEL,
+    GEMINI_API_KEY_URL,
+    GeminiProvider,
+    GeminiTransport,
 )
 from zyro.security.approval import ApprovalError, ApprovalService, ApprovalState
 from zyro.security.identity import AuthenticatedPrincipal, LocalIdentityStore
@@ -47,10 +54,20 @@ class ApprovalDecisionBody(BaseModel):
     reason: str = Field(min_length=1, max_length=1000)
 
 
+class GeminiConfigurationBody(BaseModel):
+    api_key: str = Field(min_length=16, max_length=512)
+    model_id: str = Field(default=DEFAULT_GEMINI_MODEL, max_length=128)
+
+
+class SetupCompletionBody(BaseModel):
+    use_local_fallback: bool = False
+
+
 class RuntimeContainer:
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(self, data_dir: Path, gemini_transport: GeminiTransport | None = None) -> None:
         self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self._verify_existing_databases()
         self.identity = LocalIdentityStore(data_dir / "identity.sqlite")
         self.credentials = EncryptedCredentialStore(
             data_dir / "integrations.sqlite", data_dir / "credential.key"
@@ -90,8 +107,22 @@ class RuntimeContainer:
             {"development": DevelopmentOAuthProvider()} if development_enabled else {}
         )
         self.integrations = IntegrationService(self.credentials, definitions, providers)
+        self.gemini = GeminiProvider(self.credentials, gemini_transport)
         self.approvals = ApprovalService(frozenset({"local-owner"}))
-        self.application = ZyroApplication(data_dir, self.integrations)
+        self.application = ZyroApplication(data_dir, self.integrations, self.gemini)
+
+    def _verify_existing_databases(self) -> None:
+        for path in self.data_dir.glob("*.sqlite"):
+            try:
+                connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+                try:
+                    result = connection.execute("PRAGMA quick_check").fetchone()
+                finally:
+                    connection.close()
+            except sqlite3.DatabaseError as error:
+                raise RuntimeError(f"local database integrity check failed: {path.name}") from error
+            if result is None or result[0] != "ok":
+                raise RuntimeError(f"local database integrity check failed: {path.name}")
 
     def close(self) -> None:
         self.application.close()
@@ -99,9 +130,13 @@ class RuntimeContainer:
         self.identity.close()
 
 
-def create_app(data_dir: str | Path | None = None) -> FastAPI:
+def create_app(
+    data_dir: str | Path | None = None,
+    *,
+    gemini_transport: GeminiTransport | None = None,
+) -> FastAPI:
     selected_dir = Path(data_dir or os.environ.get("ZYRO_DATA_DIR", ".zyro")).resolve()
-    runtime = RuntimeContainer(selected_dir)
+    runtime = RuntimeContainer(selected_dir, gemini_transport)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -110,7 +145,7 @@ def create_app(data_dir: str | Path | None = None) -> FastAPI:
 
     app = FastAPI(
         title="ZYRO Local API",
-        version="0.11.0",
+        version="0.12.0",
         docs_url="/api/docs",
         redoc_url=None,
         lifespan=lifespan,
@@ -189,6 +224,77 @@ def create_app(data_dir: str | Path | None = None) -> FastAPI:
             "authentication_method": current.authentication_method,
             "expires_at": current.expires_at.isoformat(),
         }
+
+    @app.get("/api/setup")
+    def setup_status(
+        _: AuthenticatedPrincipal = Depends(principal),
+    ) -> dict[str, Any]:
+        gemini = runtime.gemini.status()
+        return {
+            "completed": runtime.credentials.setting("product.setup_completed", "false") == "true",
+            "gemini": gemini,
+            "integrations": {
+                "connected": len(runtime.integrations.connections()),
+                "optional": True,
+            },
+        }
+
+    @app.post("/api/setup/complete")
+    def complete_setup(
+        body: SetupCompletionBody,
+        _: AuthenticatedPrincipal = Depends(mutating_principal),
+    ) -> dict[str, Any]:
+        if not runtime.gemini.available and not body.use_local_fallback:
+            raise HTTPException(
+                409,
+                "Configure Gemini or explicitly continue with the simulated local fallback.",
+            )
+        runtime.credentials.set_setting("product.setup_completed", "true")
+        runtime.credentials.set_setting(
+            "models.default_provider",
+            runtime.gemini.provider_id if runtime.gemini.available else "zyro.local",
+        )
+        return {
+            "completed": True,
+            "provider": runtime.credentials.setting("models.default_provider"),
+        }
+
+    @app.get("/api/models")
+    def models(
+        _: AuthenticatedPrincipal = Depends(principal),
+    ) -> dict[str, Any]:
+        return {
+            "default_provider": runtime.credentials.setting(
+                "models.default_provider", runtime.gemini.provider_id
+            ),
+            "providers": runtime.application.status()["model_providers"],
+            "gemini_api_key_url": GEMINI_API_KEY_URL,
+        }
+
+    @app.put("/api/models/gemini")
+    def configure_gemini(
+        body: GeminiConfigurationBody,
+        _: AuthenticatedPrincipal = Depends(mutating_principal),
+    ) -> dict[str, Any]:
+        result = runtime.gemini.configure(body.api_key, body.model_id)
+        if not result.valid:
+            raise HTTPException(422, {"status": result.status, "message": result.message})
+        runtime.credentials.set_setting("models.default_provider", runtime.gemini.provider_id)
+        return runtime.gemini.status()
+
+    @app.post("/api/models/gemini/validate")
+    def validate_gemini(
+        _: AuthenticatedPrincipal = Depends(mutating_principal),
+    ) -> dict[str, Any]:
+        result = runtime.gemini.validate_configured()
+        return {"valid": result.valid, "status": result.status, "message": result.message}
+
+    @app.delete("/api/models/gemini", status_code=204)
+    def remove_gemini(
+        _: AuthenticatedPrincipal = Depends(mutating_principal),
+    ) -> None:
+        runtime.gemini.remove()
+        runtime.credentials.set_setting("models.default_provider", "zyro.local")
 
     @app.post("/api/auth/logout", status_code=204)
     def logout(
