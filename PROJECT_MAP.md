@@ -2,7 +2,7 @@
 
 ## Purpose
 
-ZYRO is designed as one canonical personal Executive backed by replaceable models, bounded tools, explicit orchestration, distinct memory/state/knowledge layers, policy-controlled execution, and independent verification. Current code implements the Executive/Task/Agent runtime, model/tool routing, scoped authorization and approval, durable communication, Memory/State/Knowledge/Context, Recovery/Observability/Resources, and a bounded Freelancing loop from qualification through exact-message outreach, reply intake, project delivery, QA, and handoff. Real credentialed outbound providers and later production-hardening capabilities remain adapters or specifications rather than implemented integrations.
+ZYRO is designed as one canonical personal Executive backed by replaceable models, bounded tools, explicit orchestration, distinct memory/state/knowledge layers, policy-controlled execution, and independent verification. Current code implements and locally hardens the Executive/Task/Agent runtime, model/tool routing, scoped authorization and approval, durable communication, Memory/State/Knowledge/Context, Recovery/Observability/Resources, and a bounded Freelancing loop from qualification through exact-message outreach, reply intake, project delivery, QA, and handoff. Final integration includes architecture, authority, adversarial, restart, success-E2E, and failure-E2E checks. Real credentialed providers, formal database migrations, authenticated production authority, and deployment operations remain partial, adapters, or future work; version 1.0 readiness is not claimed.
 
 ## Repository structure
 
@@ -27,8 +27,11 @@ ZYRO is designed as one canonical personal Executive backed by replaceable model
 | `src/zyro/domains/freelancing/` | Qualification plus immutable outreach, authorized idempotent channel execution, normalized replies, revisioned projects, resource-gated canonical delivery Tasks, QA, and handoff |
 | `src/zyro/interfaces/` | Explicit future interface boundary; not yet implemented |
 | `tests/unit/` | Isolated component behavior and failure cases |
-| `tests/integration/` | Behavior across package boundaries and runtime smoke checks |
-| `tests/architecture/` | Lightweight checks for required boundaries and source documents |
+| `tests/integration/` | Behavior across package boundaries and successful local lifecycle checks |
+| `tests/architecture/` | Executable ownership/invariant and forbidden-scope guards |
+| `tests/security/` | Hostile-input and exact authority/approval boundary checks |
+| `tests/restart/` | Durable idempotency, crash, terminal-state, and reconciliation checks |
+| `tests/e2e/` | Complete failure-path lifecycle checks complementing successful integration E2E |
 | `config/` | Non-secret, reviewable configuration defaults/examples |
 | `docs/00_MASTER/` | Product and architecture authority |
 | `docs/01_CONTRACTS/` | Core data/interaction contracts |
@@ -66,4 +69,5 @@ The delivery sequence labels the scaffold **Phase 1 — Foundation** and Executi
 - **Delivery Phase 7 / Roadmap Phase 7:** Memory + State + Knowledge + Context — implemented with separate local SQLite stores, deterministic bounded retrieval, and transient Context Assembly.
 - **Delivery Phase 8:** Recovery + Observability + Resource Hardening — implemented with deterministic non-authoritative recovery, redacted SQLite traces, and local durable limits/leases/accounting.
 - **Combined Phase 9 + Phase 10 Round 1:** Outreach + External Actions + Client Replies + Delivery + QA + Handoff — implemented as a bounded local Freelancing lifecycle using existing authority/runtime services and adapter-only external channels.
-- **Next major round:** Final E2E Hardening / Integration / Production Readiness — not started.
+- **Final Round 2:** E2E Hardening + System Integration + Production-readiness Assessment — implemented and verified for the local architecture. Version 1.0 readiness remains explicitly unmet for the limitations recorded in `docs/05_DEVELOPMENT/PRODUCTION_READINESS.md`.
+- **Next major round:** None authorized. Any production integration must be separately scoped and reviewed; no feature phase is implied.

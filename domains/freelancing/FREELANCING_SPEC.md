@@ -40,3 +40,11 @@ External reply intake validates and durably deduplicates normalized callback dat
 Delivery uses canonical Executive, Task, Agent Runtime, Resource reservations, Observability, and independent Verification. Project state tracks scope, dependencies, deadlines, deliverables, ownership, and verification requirements without becoming a general project-management product. QA records criteria, evidence, findings severity, and `PASS` / `FAIL` / `NEEDS_REVIEW` / `INCONCLUSIVE`. Handoff is `VERIFIED_COMPLETE` only when canonical delivery Tasks, deliverables, and QA evidence are verified and no issue remains. Unverified or failed work stays explicit.
 
 No outreach, reply, score, model output, event, Memory record, or client instruction grants Permission or Approval. Any outbound response to a reply must re-enter the same prepare → permission → approval → Tool execution → verification path.
+
+## Final Round 2 hardening
+
+The exact approval boundary also matches requester, request, Task, and workflow identity at execution. Identical decision callbacks are idempotent; changed recipients, channels, arguments, contexts, or evidence fail closed. Uncertain outreach can persist a canonical Recovery operation/decision and correlated trace without resending.
+
+Reply-event reconciliation, reply-to-project creation, delivery records, QA, and Handoff now reject materially conflicting duplicate identities. Identical QA/Handoff requests survive restart, and completed projects cannot revive. Verification accepts repeated identical evidence but rejects conflicting evidence. These are local SQLite/idempotency guarantees, not cross-store atomicity or exactly-once external execution.
+
+Production email/CRM, webhook hosting, authenticated authority persistence, artifact storage, formal database migrations, deployment operations, and distributed coordination remain NOT IMPLEMENTED or ADAPTER ONLY. The deterministic outbound adapter remains SIMULATED.

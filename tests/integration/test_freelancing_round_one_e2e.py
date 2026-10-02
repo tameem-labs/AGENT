@@ -8,7 +8,7 @@ from pathlib import Path
 from tests.integration.test_freelancing_delivery_runtime import DeliveryHandler
 from tests.integration.test_freelancing_pipeline import pipeline
 from tests.unit.test_freelancing_evaluation import found_lead
-from tests.unit.test_freelancing_outreach import preparation, system
+from tests.unit.test_freelancing_outreach import DeliveredAdapter, preparation, system
 from zyro.agents.definition import AgentDefinition
 from zyro.agents.registry import AgentRegistry
 from zyro.core.events import InProcessEventPublisher
@@ -34,7 +34,12 @@ from zyro.domains.freelancing.replies import (
     SQLiteReplyStore,
 )
 from zyro.execution.verification import StructuralRuntimeVerifier
-from zyro.resources import ResourcePolicy, SQLiteResourceManager
+from zyro.observability import OperationalObserver, SQLiteObservabilityStore, TraceQuery
+from zyro.resources import (
+    ReservationStatus,
+    ResourcePolicy,
+    SQLiteResourceManager,
+)
 from zyro.runtime.agent_runtime import AgentRuntime
 
 NOW = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
@@ -47,7 +52,17 @@ def test_qualified_lead_to_approved_outreach_reply_delivery_qa_handoff(
     qualified = qualification.process(found_lead(), owner="owner-1")
     assert qualified.outcome is PipelineOutcome.LEAD_QUALIFIED
 
-    outreach, approvals, _, outreach_store, outreach_resources, adapter, _ = system(tmp_path)
+    trace_store = SQLiteObservabilityStore(tmp_path / "e2e-traces.sqlite")
+    trace_ids = count(1)
+    observer = OperationalObserver(
+        trace_store,
+        clock=lambda: NOW,
+        id_factory=lambda: f"e2e-trace-{next(trace_ids)}",
+    )
+    outreach, approvals, _, outreach_store, outreach_resources, adapter, outreach_events = system(
+        tmp_path, adapter=DeliveredAdapter()
+    )
+    outreach._observer = observer
     prepared = replace(
         preparation(),
         lead_id=qualified.lead.lead_id,
@@ -68,8 +83,13 @@ def test_qualified_lead_to_approved_outreach_reply_delivery_qa_handoff(
         instance_id="outreach-instance",
         approval_id=pending.approval_id,
     )
-    assert dispatched.status is OutreachStatus.ACCEPTED
-    assert dispatched.simulated
+    assert dispatched.status is OutreachStatus.DELIVERED
+    assert not dispatched.simulated
+    verified_outreach = outreach.verify_delivery(
+        prepared.external_action_id,
+        verification_reference="independent-outreach-evidence",
+    )
+    assert verified_outreach.status is OutreachStatus.VERIFIED
     assert adapter.calls == [prepared.external_action_id]
 
     reply_store = SQLiteReplyStore(tmp_path / "e2e-replies.sqlite")
@@ -93,12 +113,14 @@ def test_qualified_lead_to_approved_outreach_reply_delivery_qa_handoff(
     assert ClientReplyIntake(
         reply_store,
         reply_publisher,
+        observer=observer,
         clock=lambda: NOW,
         id_factory=lambda: "reply-event",
     ).ingest(inbound)
     processed = DeterministicReplyProcessor(
         reply_store,
         policy_version="reply-v1",
+        observer=observer,
         clock=lambda: NOW,
         id_factory=lambda: "processing-e2e",
     ).process(inbound.reply_id, processing_task_id="task-processing")
@@ -107,6 +129,7 @@ def test_qualified_lead_to_approved_outreach_reply_delivery_qa_handoff(
     project_store = SQLiteProjectStore(tmp_path / "e2e-project.sqlite", clock=lambda: NOW)
     project = OpportunityService(
         project_store,
+        observer=observer,
         clock=lambda: NOW,
         id_factory=lambda: "project-e2e",
     ).create_pending(
@@ -149,11 +172,13 @@ def test_qualified_lead_to_approved_outreach_reply_delivery_qa_handoff(
         ResourcePolicy(max_concurrent_tasks=1, max_concurrent_agents=1),
         clock=lambda: NOW,
     )
+    delivery_events = InProcessEventPublisher()
     delivery = DeliveryCoordinator(
         project_store,
         delivery_resources,
         executive,
-        InProcessEventPublisher(),
+        delivery_events,
+        observer=observer,
         clock=lambda: NOW,
         id_factory=lambda: "delivery-event",
     )
@@ -180,7 +205,12 @@ def test_qualified_lead_to_approved_outreach_reply_delivery_qa_handoff(
         "artifact-e2e",
     )
     project_store.transition(project.project_id, verified.revision, ProjectStatus.QA)
-    qa = QAService(project_store, clock=lambda: NOW, id_factory=lambda: "qa-e2e").evaluate(
+    qa = QAService(
+        project_store,
+        observer=observer,
+        clock=lambda: NOW,
+        id_factory=lambda: "qa-e2e",
+    ).evaluate(
         project.project_id,
         "task-qa",
         (QACriterion("scope", "Deliverable matches scope", True, ("artifact-e2e",)),),
@@ -189,14 +219,54 @@ def test_qualified_lead_to_approved_outreach_reply_delivery_qa_handoff(
     assert qa.outcome.value == "PASS"
     handoff = HandoffService(
         project_store,
+        observer=observer,
         clock=lambda: NOW,
         id_factory=lambda: "handoff-e2e",
     ).create(project.project_id)
 
     assert handoff.completion is HandoffCompletion.VERIFIED_COMPLETE
     assert project_store.get(project.project_id).status is ProjectStatus.COMPLETED
+    assert [event.event_type for event in outreach_events.events()] == [
+        "OUTREACH_PREPARED",
+        "OUTREACH_APPROVAL_REQUIRED",
+        "OUTREACH_DELIVERED",
+        "OUTREACH_VERIFIED",
+    ]
+    assert [event.event_type for event in reply_publisher.events()] == ["CLIENT_REPLY_RECEIVED"]
+    assert [event.event_type for event in delivery_events.events()] == ["DELIVERY_TASK_RECORDED"]
+    assert (
+        outreach_resources.reservation(f"external-action:{prepared.external_action_id}").status
+        is ReservationStatus.RELEASED
+    )
+    delivery_admission_id = f"delivery:{project.project_id}:request-delivery"
+    assert (
+        delivery_resources.reservation(f"task-slot:{delivery_admission_id}").status
+        is ReservationStatus.RELEASED
+    )
+    assert (
+        delivery_resources.reservation(f"agent-slot:{delivery_admission_id}").status
+        is ReservationStatus.RELEASED
+    )
+    traces = trace_store.query(TraceQuery(correlation_id=prepared.correlation_id))
+    trace_types = {trace.event_type for trace in traces}
+    assert trace_types >= {
+        "OUTREACH_PREPARED",
+        "OUTREACH_APPROVAL_REQUIRED",
+        "OUTREACH_DELIVERED",
+        "OUTREACH_VERIFIED",
+        "CLIENT_REPLY_RECEIVED",
+        "CLIENT_REPLY_PROCESSED",
+        "PROJECT_PENDING",
+        "DELIVERY_TASK_RECORDED",
+        "QA_COMPLETED",
+        "HANDOFF_RECORDED",
+    }
+    assert any(trace.approval_id == pending.approval_id for trace in traces)
+    assert any(trace.verification_id == "independent-outreach-evidence" for trace in traces)
+    assert any(trace.verification_id == run.result.verification.verification_id for trace in traces)
     outreach_store.close()
     outreach_resources.close()
     reply_store.close()
     project_store.close()
     delivery_resources.close()
+    trace_store.close()

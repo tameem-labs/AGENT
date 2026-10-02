@@ -40,6 +40,6 @@ An Event is a published fact or signal. The local durable bus accepts only expli
 
 Delivery state is independently persisted per `(event_id, subscriber_id)`. Delivery is at-least-once with finite retries, persisted attempt identity, ACK correlation to event/subscriber/attempt, identity-based idempotency, subscriber-and-key ordering, durable dead letters, and restart recovery. Duplicate, stale, malformed, or unknown ACKs do not alter valid state. One subscriber's failure does not reverse another subscriber's ACK.
 
-No exactly-once execution or global ordering is claimed. Ordering applies only to a configured ordering key for one subscriber. Handlers must be rebound after process restart; persisted subscriptions without a bound handler remain pending and observable. The Event Bus communicates facts and does not own canonical Task, lead, permission, approval, policy, or workflow state. Payloads are untrusted data and never grant authority.
+No exactly-once execution or global ordering is claimed. Ordering applies only to a configured ordering key for one subscriber. Handlers must be rebound after process restart; persisted subscriptions without a bound handler remain pending and observable. The Event Bus communicates facts and does not own canonical Task, lead, permission, approval, policy, or workflow state. Payloads are bounded untrusted data, reject nested secret-shaped fields/assignments, and never grant authority.
 
 External webhooks/callbacks enter through intake and orchestration; they do not bypass these boundaries.

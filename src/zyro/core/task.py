@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
+from zyro.core.data import validate_text
 from zyro.core.errors import ErrorInfo, InvalidTaskError, InvalidTaskTransition
 from zyro.core.verification import VerificationEvidence
 
@@ -106,11 +107,33 @@ class Task:
     completed_at: datetime | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
-        for field_name in ("task_id", "request_id", "correlation_id", "goal", "owner"):
-            value = getattr(self, field_name)
-            if not isinstance(value, str) or not value.strip():
-                raise InvalidTaskError(f"{field_name} must be a non-empty string")
-            setattr(self, field_name, value.strip())
+        try:
+            for field_name in ("task_id", "request_id", "correlation_id", "owner"):
+                setattr(
+                    self,
+                    field_name,
+                    validate_text(getattr(self, field_name), field_name, max_chars=512),
+                )
+            self.goal = validate_text(self.goal, "goal", max_chars=16_384)
+            self.dependencies = tuple(
+                validate_text(item, "dependency", max_chars=512) for item in self.dependencies
+            )
+            if self.assigned_agent_id is not None:
+                self.assigned_agent_id = validate_text(
+                    self.assigned_agent_id, "assigned_agent_id", max_chars=512
+                )
+            if self.verification_plan is not None:
+                self.verification_plan = validate_text(
+                    self.verification_plan, "verification_plan", max_chars=4_096
+                )
+            if len(self.resource_budget) > 64:
+                raise ValueError("resource budget exceeds its bounded size")
+            self.resource_budget = {
+                validate_text(key, "resource budget key", max_chars=128): value
+                for key, value in self.resource_budget.items()
+            }
+        except ValueError as error:
+            raise InvalidTaskError(str(error)) from error
         if self.max_attempts < 1:
             raise InvalidTaskError("max_attempts must be at least 1")
         if len(set(self.dependencies)) != len(self.dependencies):
@@ -138,9 +161,10 @@ class Task:
     def assign_agent(self, agent_id: str) -> None:
         if self.status not in {TaskStatus.PENDING, TaskStatus.RETRY}:
             raise InvalidTaskTransition("an agent can only be assigned before an attempt starts")
-        if not agent_id.strip():
-            raise InvalidTaskError("assigned agent id must not be empty")
-        self.assigned_agent_id = agent_id.strip()
+        try:
+            self.assigned_agent_id = validate_text(agent_id, "assigned agent id", max_chars=512)
+        except ValueError as error:
+            raise InvalidTaskError(str(error)) from error
         self._touch()
 
     def start(self) -> None:

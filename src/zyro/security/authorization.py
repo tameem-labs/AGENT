@@ -156,13 +156,35 @@ class ToolAuthorizationService:
             )
 
         validity = self._approvals.check(call.approval_id, action)
-        if validity.valid:
+        approval_context_matches = (
+            validity.approval is not None
+            and validity.approval.request_id == call.request_id
+            and validity.approval.task_id == call.task_id
+            and validity.approval.workflow_id == call.workflow_id
+            and validity.approval.requester_id == call.requester_id
+        )
+        if validity.valid and approval_context_matches:
             return ToolAuthorizationDecision(
                 status=ToolAuthorizationStatus.ALLOW,
                 permission_decision_id=permission.decision_id,
                 permission_id=permission.permission_id,
                 approval_id=call.approval_id,
                 policy_version=risk.policy_version,
+            )
+        if validity.valid:
+            return ToolAuthorizationDecision(
+                status=ToolAuthorizationStatus.APPROVAL_INVALID,
+                permission_decision_id=permission.decision_id,
+                permission_id=permission.permission_id,
+                approval_id=call.approval_id,
+                policy_version=risk.policy_version,
+                error=ErrorInfo(
+                    code="approval_execution_context_mismatch",
+                    message=(
+                        "Approval is bound to a different requester, request, task, or workflow."
+                    ),
+                    error_type="ApprovalBlocked",
+                ),
             )
 
         status, code = {

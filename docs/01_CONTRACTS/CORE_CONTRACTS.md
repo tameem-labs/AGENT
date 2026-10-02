@@ -8,7 +8,7 @@ Agent Definition = what the agent is.
 Agent Instance = a runtime execution.
 
 ## Task
-A bounded unit of work with task_id, request_id, goal, status, priority, owner, dependencies, assigned agent, budget, verification plan, timestamps and attempts.
+A bounded unit of work with task_id, request_id, goal, status, priority, owner, dependencies, assigned agent, budget, verification plan, timestamps and attempts. Task identifiers and plans are size-bounded; secret-shaped assignments and unbounded goals are rejected at construction.
 
 Lifecycle:
 PENDING → RUNNING → VERIFYING → VERIFIED → DONE.

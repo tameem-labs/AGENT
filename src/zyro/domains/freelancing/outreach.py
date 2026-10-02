@@ -24,10 +24,13 @@ from zyro.recovery import (
     FailureClass,
     FailureIdentity,
     FailureRecord,
+    RecoverableOperation,
+    RecoverableOperationStatus,
     RecoveryDecision,
     RecoveryPolicy,
     RecoveryRequest,
     SideEffectState,
+    SQLiteRecoveryStore,
 )
 from zyro.resources import (
     AdmissionOutcome,
@@ -414,20 +417,27 @@ class SQLiteOutreachStore:
         verification_reference: str,
     ) -> ExternalActionRecord:
         current = self.action_required(external_action_id)
+        reference = validate_text(verification_reference, "verification_reference")
+        if current.status is OutreachStatus.VERIFIED:
+            if current.verification_reference == reference:
+                return current
+            raise OutreachStoreError("verified action has conflicting verification evidence")
         if current.simulated or current.status is not OutreachStatus.DELIVERED:
             raise OutreachStoreError("only definitively delivered non-simulated actions can verify")
-        reference = validate_text(verification_reference, "verification_reference")
         with self._connection:
-            self._connection.execute(
+            cursor = self._connection.execute(
                 "UPDATE external_actions SET status=?,verification_reference=?,updated_at=? "
-                "WHERE external_action_id=?",
+                "WHERE external_action_id=? AND status=?",
                 (
                     OutreachStatus.VERIFIED.value,
                     reference,
                     self._clock().isoformat(),
                     external_action_id,
+                    OutreachStatus.DELIVERED.value,
                 ),
             )
+        if cursor.rowcount != 1:
+            raise OutreachStoreError("external action changed during verification")
         return self.action_required(external_action_id)
 
     def action(self, external_action_id: str) -> ExternalActionRecord | None:
@@ -720,13 +730,20 @@ class OutreachService:
         record = self._store.action_required(external_action_id)
         preparation = self._store.preparation(record.preparation_id)
         if (
-            record.status is OutreachStatus.DELIVERED
+            record.status in {OutreachStatus.DELIVERED, OutreachStatus.VERIFIED}
             and not record.simulated
             and verification_reference is not None
         ):
+            was_verified = record.status is OutreachStatus.VERIFIED
             record = self._store.mark_verified(external_action_id, verification_reference)
             status = OutreachStatus.VERIFIED
-            self._emit(preparation, "OUTREACH_VERIFIED", status)
+            if not was_verified:
+                self._emit(
+                    preparation,
+                    "OUTREACH_VERIFIED",
+                    status,
+                    verification_id=record.verification_reference,
+                )
         elif record.status in {OutreachStatus.ACCEPTED, OutreachStatus.DELIVERED}:
             status = OutreachStatus.SUCCEEDED_BUT_UNVERIFIED
         else:
@@ -745,6 +762,7 @@ class OutreachService:
         status: OutreachStatus,
         *,
         approval_id: str | None = None,
+        verification_id: str | None = None,
     ) -> None:
         event = Event(
             self._id_factory(),
@@ -787,6 +805,7 @@ class OutreachService:
                     ),
                     event_id=event.event_id,
                     approval_id=approval_id,
+                    verification_id=verification_id,
                     tool_id=OUTREACH_TOOL_ID,
                     metadata={
                         "external_action_id": preparation.external_action_id,
@@ -803,10 +822,14 @@ class OutreachRecoveryBridge:
         self,
         policy: RecoveryPolicy,
         *,
+        store: SQLiteRecoveryStore | None = None,
+        observer: Observer | None = None,
         clock: Callable[[], datetime] = _utc_now,
         id_factory: Callable[[], str] | None = None,
     ) -> None:
         self._policy = policy
+        self._store = store
+        self._observer = observer
         self._clock = clock
         self._id_factory = id_factory or (lambda: str(uuid4()))
 
@@ -819,18 +842,37 @@ class OutreachRecoveryBridge:
     ) -> RecoveryDecision:
         if action.status is not OutreachStatus.UNCERTAIN:
             raise ValueError("only uncertain external actions enter uncertainty recovery")
+        identity = FailureIdentity(
+            preparation.request_id,
+            preparation.task_id,
+            preparation.correlation_id,
+            workflow_id=preparation.workflow_id,
+            agent_id=preparation.agent_id,
+            tool_id=OUTREACH_TOOL_ID,
+            component_id=preparation.external_action_id,
+        )
+        operation = RecoverableOperation(
+            preparation.external_action_id,
+            identity,
+            RecoverableOperationStatus.UNCERTAIN,
+            action.attempts,
+            3,
+            True,
+            SideEffectState.UNCERTAIN,
+            1,
+            action.updated_at,
+        )
+        if self._store is not None:
+            existing_operation = self._store.operation(preparation.external_action_id)
+            if existing_operation is not None and existing_operation != operation:
+                raise ValueError("external action conflicts with durable recovery operation")
+            existing_decision = self._store.decision_for(preparation.external_action_id, 1)
+            if existing_decision is not None:
+                return existing_decision
         failure = FailureRecord(
             self._id_factory(),
             FailureClass.EXTERNAL_SIDE_EFFECT_UNCERTAIN,
-            FailureIdentity(
-                preparation.request_id,
-                preparation.task_id,
-                preparation.correlation_id,
-                workflow_id=preparation.workflow_id,
-                agent_id=preparation.agent_id,
-                tool_id=OUTREACH_TOOL_ID,
-                component_id=preparation.external_action_id,
-            ),
+            identity,
             ErrorInfo(
                 action.error_code or "outreach_outcome_uncertain",
                 "External outreach may have occurred; blind retry is forbidden.",
@@ -840,7 +882,7 @@ class OutreachRecoveryBridge:
             False,
             SideEffectState.UNCERTAIN,
         )
-        return self._policy.decide(
+        decision = self._policy.decide(
             RecoveryRequest(
                 self._id_factory(),
                 preparation.external_action_id,
@@ -855,6 +897,36 @@ class OutreachRecoveryBridge:
                 OutreachStatus.UNCERTAIN.value,
             )
         )
+        if self._store is not None:
+            if self._store.operation(preparation.external_action_id) is None:
+                self._store.register_operation(operation)
+            self._store.record_failure(preparation.external_action_id, failure)
+            decision = self._store.record_decision(decision)
+        if self._observer is not None:
+            with suppress(Exception):
+                self._observer.record(
+                    "OUTREACH_RECOVERY_DECIDED",
+                    "freelancing.outreach-recovery",
+                    "decide",
+                    TraceStatus.UNKNOWN,
+                    TraceContext(
+                        preparation.request_id,
+                        preparation.task_id,
+                        preparation.correlation_id,
+                        preparation.workflow_id,
+                        preparation.agent_id,
+                    ),
+                    tool_id=OUTREACH_TOOL_ID,
+                    recovery_id=decision.recovery_id,
+                    attempt=action.attempts,
+                    error_classification=failure.classification.value,
+                    metadata={
+                        "external_action_id": preparation.external_action_id,
+                        "action": decision.action.value,
+                        "requires_reconciliation": decision.requires_reconciliation,
+                    },
+                )
+        return decision
 
 
 def _tool_result_for_existing(record: ExternalActionRecord) -> ToolHandlerResult:

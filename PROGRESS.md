@@ -10,11 +10,69 @@ This file is a chronological, append-only implementation record. Add new entries
 
 ## Current status
 
-- **Current delivery phase:** Combined Phase 9 + Phase 10 Round 1 — Outreach + External Actions + Replies + Delivery + QA + Handoff — **VERIFIED**
-- **Architecture-roadmap equivalent:** Controlled Freelancing operational lifecycle through verified handoff
-- **Next permitted work:** Final E2E Hardening / Integration / Production Readiness, only when explicitly requested
-- **Known blockers:** None
-- **Explicitly not implemented:** credentialed production email/CRM providers, scheduler, full workflow engine, lead-finding integrations, browser/computer control, voice/camera, UI/dashboard, payments/billing/contracts, unrestricted autonomous outreach, distributed/cloud deployment, monitoring SaaS, and final production hardening remain **ADAPTER ONLY**, **DOCUMENTED**, or **FUTURE** as stated below.
+- **Current delivery phase:** Final Round 2 — E2E Hardening + System Integration + Production-readiness Assessment — **VERIFIED**
+- **Architecture-roadmap equivalent:** Final local-system hardening; no further feature phase is authorized
+- **Next permitted work:** None by default. Any production integration must be separately scoped and reviewed.
+- **Known blockers:** Version 1.0 readiness is blocked by process-local authority, absent formal database migrations/backup operations, absent credentialed provider-specific integrations and verification, and absent deployment/authentication/multi-process qualification.
+- **Explicitly not implemented:** credentialed production email/CRM/model/webhook providers, scheduler, full workflow engine, lead-finding integrations, browser/computer control, voice/camera, UI/dashboard, payments/billing/contracts, unrestricted autonomous outreach, distributed/cloud deployment, monitoring SaaS, and deployment operations remain **ADAPTER ONLY**, **SIMULATED**, **NOT IMPLEMENTED**, or **FUTURE** as stated below.
+
+---
+
+## 2026-10-02 09:21:36 UTC — Final Round 2: E2E Hardening + System Integration + Production-readiness Assessment
+
+### Status
+
+**IMPLEMENTED, TESTED, VERIFIED LOCALLY; 1.0 READINESS NOT MET** — package advanced to **0.10.0**, not 1.0.0.
+
+### Inspection and audit result
+
+- Verified the 0.9.0 baseline from source, current contracts/policies, tests, project map, README, and prior progress evidence before modification. Baseline was clean and all 289 tests, Ruff, formatting, and strict mypy passed.
+- Audited Core Task/Agent/Model/Tool, Permission/Approval/Verification, communication/Event Bus, Memory/State/Knowledge/Context, Recovery/Observability/Resources, and the complete local Freelancing implementation. Existing architecture was retained; no scheduler, Workflow engine, interface, provider, finance, browser, distributed, or UI scope was added.
+- Existing tests already covered model routing/fallback, tool boundaries, Event ACK/retry/dead-letter/restart, memory forgetting/scope, context budgets, recovery finiteness, resource accounting/fairness/leases, and the Round 1 lifecycle. Final work targets concrete integration gaps rather than duplicating those suites.
+
+### Hardening implemented
+
+- Bound action Approval validity to requester, request, Task, and nullable workflow identity in addition to exact action fingerprint, executor, recipient/target, channel, arguments, conditions, purpose, and expected effect. Wrong execution context now fails closed even when action content matches.
+- Made identical repeated human approval decisions idempotent without duplicate history and reject conflicting repeated final decisions. Standing Permission and Approval expiry continue to re-evaluate immediately before handler invocation.
+- Hardened canonical Event payload validation to reject nested secret-shaped assignments and refresh-token fields as well as secret keys, unsupported values, and oversized payloads.
+- Made independent outreach verification idempotent for identical evidence, CAS-protected from stale delivery state, and explicitly conflicting for changed evidence. No simulated action can verify.
+- Added optional durable Phase 8 Recovery composition to uncertain outreach: uncertain operation/failure/decision persistence plus correlated redacted observation, while retaining the no-resend rule and idempotent Recovery decision.
+- Hardened project-store identities: reply-to-project creation survives redelivery/restart and rejects materially changed duplicates; Delivery Task, QA, and Handoff records compare duplicates rather than silently swallowing identity conflicts.
+- Required new QA and Handoff work to occur in canonical QA project state. Identical QA/Handoff requests remain idempotent after restart, completed projects do not revive, and changed duplicate evidence/issues fail closed.
+- Expanded the successful Freelancing E2E test to assert domain IDs/states/events, exact Approval, verification identity, released Resource reservations, and correlated Observability across outreach, reply, project, delivery, QA, and Handoff.
+- Added a complete timeout-after-possible-side-effect failure E2E proving one adapter invocation, durable uncertainty, no success event, no resend, durable `MARK_UNCERTAIN`, correlated recovery trace, and restart preservation.
+- Added final architecture guards, authority/race/adversarial tests, and durable restart/idempotency tests under explicit architecture/security/restart/E2E test layers.
+
+### Actual guarantees
+
+- Canonical architecture ownership remains separate and executable guards prevent domain redefinition of Task, Tool Executor, Permission, Approval, Event Bus, Recovery, or Resource Manager.
+- Model, Memory, Knowledge, State, Context, client content, events, and Observability remain data/evidence and cannot authorize. External outreach can execute only through canonical Tool authorization.
+- SQLite-backed state uses local transactions, constraints, stable identities, CAS for revisioned aggregates, terminal protection, and explicit reconciliation. No distributed/cross-store atomicity or exactly-once external effect is claimed.
+- Event delivery remains durable local at-least-once with finite retry and identity deduplication, not global ordering or exactly-once handler execution.
+- Recovery remains finite and non-executing; Resources remain capacity authority only; Observability remains fail-open and non-authoritative.
+
+### Tests and validation
+
+- `.venv/bin/pytest -q` — **309 passed**.
+- Focused final architecture/security/restart/E2E, Event Bus, Recovery, Resource, authority, and affected domain suites — **146 passed**.
+- Ruff lint and format check — **passed**, 159 Python files formatted.
+- Strict mypy — **passed**, no issues in 140 source/test files.
+- Compileall, import, CLI, editable package/source/distribution version smoke — **passed** at 0.10.0.
+- Architecture, security, Recovery, Resource, restart, success/failure E2E, credential/secret, forbidden-infrastructure, SQLite integrity, and `git diff --check` gates — **passed**.
+- Complete final diff inspected; commit, normal branch push, remote equality, and clean worktree — **verified**.
+
+### Production-readiness and known limitations
+
+- The factual status matrix is `docs/05_DEVELOPMENT/PRODUCTION_READINESS.md`.
+- **1.0 readiness is NOT MET.** Permission and Approval are process-local and are not an authenticated durable authority service. Open decisions disappear on restart and therefore fail closed.
+- SQLite stores have initialization schemas, indexes, constraints, WAL, and local restart evidence but no schema-version table, formal migration runner, backup/restore automation, encryption-at-rest management, or qualified multi-process operation.
+- Email/CRM/model/webhook/monitoring integrations are absent or adapter-only. The bundled outbound adapter remains explicitly simulated; there is no production provider delivery claim.
+- Runtime is synchronous and local. There is no service host, identity provider, TLS/authentication operation, scheduler, Workflow engine, worker fleet, distributed coordination, or production deployment system.
+- Structural verification, lexical retrieval/classification, and bounded domain QA are honest local mechanisms, not provider-specific proof, semantic intelligence, or universal artifact validation.
+
+### Stop condition
+
+Final hardening is complete. No subsequent feature phase is authorized. Any production integration must be proposed as separately reviewed bounded work; the excluded future systems remain excluded.
 
 ---
 

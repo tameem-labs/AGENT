@@ -449,12 +449,19 @@ class ApprovalService:
         decision: ApprovalDecisionType,
         state: ApprovalState,
     ) -> ApprovalRequest:
-        request = self._current_open(approval_id)
         principal_id = _clean(principal_id, "decision_principal_id")
+        reason = _clean(reason, "reason")
+        request = self._expire_if_needed(self.get(approval_id))
         if principal_id not in self._decision_principals:
             raise ApprovalError("decision principal is not authorized to decide approvals")
         if principal_id in {request.requester_id, request.action.executor_id}:
             raise ApprovalError("requester or executor cannot approve its own action")
+        if request.state is state:
+            if request.decision_principal_id == principal_id and request.decision_reason == reason:
+                return request
+            raise ApprovalError("approval already has a conflicting final decision")
+        if request.state not in {ApprovalState.PENDING, ApprovalState.ESCALATED}:
+            raise ApprovalError(f"approval cannot transition from {request.state}")
         return self._transition(request, state, decision, principal_id, reason)
 
     def _current_open(self, approval_id: str) -> ApprovalRequest:
@@ -479,7 +486,7 @@ class ApprovalService:
                 ApprovalState.EXPIRED,
                 ApprovalDecisionType.EXPIRE,
                 "system:expiry",
-                "Approval expired without a decision.",
+                "Approval validity period expired.",
                 decided_at=now,
             )
         return request

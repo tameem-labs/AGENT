@@ -2,7 +2,7 @@
 
 ZYRO is specified as a personal Executive AI, computer agent, and AI organization. The user will interact with one canonical Executive while internal components coordinate domains, agents, models, tools, workflows, state, knowledge, security, execution, and verification.
 
-This repository has completed the combined **Phase 9 + Phase 10 Round 1 — Outreach, External Actions, Replies, Delivery, QA, and Handoff** milestone. It now supports a controlled local freelancing loop over the prior Executive/Task/Agent, tool authorization, durable communication, context, recovery, observability, and resource foundations. Outbound messages require standing permission plus expiring human approval of the exact final payload and execute only through the canonical Tool Executor. External channels remain bounded adapters; the repository ships an explicitly simulated test adapter and no credentialed production email/CRM provider. It still does **not** include a scheduler, workflow engine, browser/computer control, UI, payments, distributed deployment, or autonomous outreach.
+This repository has completed the **Final Round 2 — E2E Hardening, System Integration, and Production-readiness Assessment** at version **0.10.0**. The controlled local freelancing lifecycle and prior Executive/Task/Agent, authorization, durable communication, data, recovery, observability, and resource foundations have code-level architecture guards, adversarial authority tests, success/failure E2E evidence, and restart/idempotency hardening. Exact outreach approvals now also bind requester/request/Task/workflow context; identical approval callbacks and verified evidence are idempotent while conflicts fail closed. Version 1.0 readiness is **not met**: external channels remain adapter-only, the bundled channel is explicitly simulated, Permission/Approval are process-local, and no formal database migration/deployment/provider operations platform exists. The repository still does **not** include a scheduler, workflow engine, browser/computer control, UI, payments, distributed deployment, or autonomous outreach.
 
 > Naming note: historical delivery phases 1–4 were offset by one from roadmap phases 0–3. `PROGRESS.md` records actual implementation status and phase mapping.
 
@@ -96,6 +96,7 @@ Safe defaults need no local configuration. ZYRO reads these optional process env
 - `src/zyro/domains/` — implemented bounded domain consumers of Core
 - `PROJECT_MAP.md` — directory ownership, architecture layers, and source-of-truth rules
 - `PROGRESS.md` — append-only implementation and verification history
+- `docs/05_DEVELOPMENT/PRODUCTION_READINESS.md` — factual implemented/partial/adapter-only limitations and the 1.0 readiness decision
 
 Start with `START_HERE.md`, then read the master specification and invariants in `docs/00_MASTER/`. Before making implementation changes, read `PROGRESS.md` and `PROJECT_MAP.md`.
 

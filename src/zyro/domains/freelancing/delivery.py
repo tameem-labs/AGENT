@@ -293,10 +293,16 @@ class SQLiteProjectStore:
                 )
             return True
         except sqlite3.IntegrityError:
-            existing = self.get(project.project_id)
+            existing = self.by_reply_id(project.reply_id)
             if existing == project:
                 return False
             raise ValueError("project identity or reply conflict") from None
+
+    def by_reply_id(self, reply_id: str) -> ProjectRecord | None:
+        row = self._connection.execute(
+            "SELECT document_json FROM projects WHERE reply_id=?", (reply_id,)
+        ).fetchone()
+        return None if row is None else _project_from_document(json.loads(row["document_json"]))
 
     def get(self, project_id: str) -> ProjectRecord:
         row = self._connection.execute(
@@ -391,32 +397,25 @@ class SQLiteProjectStore:
                 )
             return True
         except sqlite3.IntegrityError:
-            return False
+            existing = self.delivery_task(record.task_id)
+            if existing == record:
+                return False
+            raise ValueError("delivery task identity conflict") from None
+
+    def delivery_task(self, task_id: str) -> DeliveryTaskRecord | None:
+        row = self._connection.execute(
+            "SELECT document_json FROM delivery_tasks WHERE task_id=?", (task_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return _delivery_task_from_document(json.loads(row["document_json"]))
 
     def delivery_tasks(self, project_id: str) -> tuple[DeliveryTaskRecord, ...]:
         rows = self._connection.execute(
             "SELECT document_json FROM delivery_tasks WHERE project_id=? ORDER BY task_id",
             (project_id,),
         ).fetchall()
-        result = []
-        for row in rows:
-            item = json.loads(row["document_json"])
-            result.append(
-                DeliveryTaskRecord(
-                    item["project_id"],
-                    item["workflow_id"],
-                    item["request_id"],
-                    item["task_id"],
-                    item["correlation_id"],
-                    item["agent_id"],
-                    item["instance_id"],
-                    int(item["attempts"]),
-                    ExecutiveOutcome(item["outcome"]),
-                    item["verification_id"],
-                    datetime.fromisoformat(item["recorded_at"]),
-                )
-            )
-        return tuple(result)
+        return tuple(_delivery_task_from_document(json.loads(row["document_json"])) for row in rows)
 
     def save_qa(self, result: QAResult) -> bool:
         document = _qa_document(result)
@@ -428,7 +427,10 @@ class SQLiteProjectStore:
                 )
             return True
         except sqlite3.IntegrityError:
-            return False
+            existing = self.qa(result.project_id)
+            if existing == result:
+                return False
+            raise ValueError("QA result identity or project conflict") from None
 
     def qa(self, project_id: str) -> QAResult | None:
         row = self._connection.execute(
@@ -458,7 +460,31 @@ class SQLiteProjectStore:
                 )
             return True
         except sqlite3.IntegrityError:
-            return False
+            existing = self.handoff(handoff.project_id)
+            if existing == handoff:
+                return False
+            raise ValueError("handoff identity or project conflict") from None
+
+    def handoff(self, project_id: str) -> HandoffRecord | None:
+        row = self._connection.execute(
+            "SELECT document_json FROM handoffs WHERE project_id=?", (project_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        item = json.loads(row["document_json"])
+        return HandoffRecord(
+            item["handoff_id"],
+            item["project_id"],
+            item["client_id"],
+            tuple(item["deliverable_ids"]),
+            ProjectStatus(item["delivery_status"]),
+            item["qa_id"],
+            QACheckOutcome(item["qa_status"]),
+            tuple(item["verification_references"]),
+            tuple(item["outstanding_issues"]),
+            HandoffCompletion(item["completion"]),
+            datetime.fromisoformat(item["created_at"]),
+        )
 
 
 class OpportunityService:
@@ -490,6 +516,37 @@ class OpportunityService:
     ) -> ProjectRecord:
         if processing.reply_id != reply.reply_id or not processing.creates_potential_project:
             raise ValueError("only matching potential-project processing may create an opportunity")
+        existing = self._store.by_reply_id(reply.reply_id)
+        if existing is not None:
+            requested_identity = (
+                reply.lead_id,
+                reply.client_id,
+                reply.reply_id,
+                workflow_id,
+                reply.request_id,
+                reply.task_id,
+                reply.correlation_id,
+                plain(validate_record(scope, "project scope", max_bytes=16_384)),
+                owner_agent_id,
+                verification_requirements,
+                deliverables,
+            )
+            existing_identity = (
+                existing.lead_id,
+                existing.client_id,
+                existing.reply_id,
+                existing.workflow_id,
+                existing.request_id,
+                existing.task_id,
+                existing.correlation_id,
+                plain(existing.scope),
+                existing.owner_agent_id,
+                existing.verification_requirements,
+                existing.deliverables,
+            )
+            if requested_identity == existing_identity:
+                return existing
+            raise ValueError("reply already owns a materially different project")
         project = ProjectRecord(
             self._id_factory(),
             reply.lead_id,
@@ -555,9 +612,20 @@ class QAService:
         criteria: tuple[QACriterion, ...],
         verification_references: tuple[str, ...] = (),
     ) -> QAResult:
+        project = self._store.get(project_id)
         existing = self._store.qa(project_id)
         if existing is not None:
-            return existing
+            if (
+                existing.task_id == task_id
+                and existing.criteria == criteria
+                and existing.verification_references == verification_references
+                and existing.qa_agent_id == self.agent_id
+                and existing.qa_agent_version == self.agent_version
+            ):
+                return existing
+            raise ValueError("project already has a materially different QA result")
+        if project.status is not ProjectStatus.QA:
+            raise ValueError("QA evaluation requires project QA state")
         if any(item.passed is False for item in criteria):
             outcome = QACheckOutcome.FAIL
         elif any(item.passed is None for item in criteria):
@@ -750,7 +818,15 @@ class HandoffService:
         self._id_factory = id_factory or (lambda: str(uuid4()))
 
     def create(self, project_id: str, outstanding_issues: tuple[str, ...] = ()) -> HandoffRecord:
+        issues = tuple(validate_text(item, "outstanding issue") for item in outstanding_issues)
+        existing = self._store.handoff(project_id)
+        if existing is not None:
+            if existing.outstanding_issues == issues:
+                return existing
+            raise ValueError("project already has a handoff with different outstanding issues")
         project = self._store.get(project_id)
+        if project.status is not ProjectStatus.QA:
+            raise ValueError("handoff requires project QA state")
         qa = self._store.qa(project_id)
         if qa is None:
             raise ValueError("handoff requires a QA result")
@@ -759,7 +835,6 @@ class HandoffService:
             item.verified for item in project.deliverables
         )
         all_tasks_verified = bool(tasks) and all(item.verified for item in tasks)
-        issues = tuple(validate_text(item, "outstanding issue") for item in outstanding_issues)
         if (
             qa.outcome is QACheckOutcome.PASS
             and all_deliverables_verified
@@ -818,6 +893,22 @@ class HandoffService:
                 project.project_id, handoff_state.revision, ProjectStatus.COMPLETED
             )
         return handoff
+
+
+def _delivery_task_from_document(item: Mapping[str, Any]) -> DeliveryTaskRecord:
+    return DeliveryTaskRecord(
+        item["project_id"],
+        item["workflow_id"],
+        item["request_id"],
+        item["task_id"],
+        item["correlation_id"],
+        item["agent_id"],
+        item["instance_id"],
+        int(item["attempts"]),
+        ExecutiveOutcome(item["outcome"]),
+        item["verification_id"],
+        datetime.fromisoformat(item["recorded_at"]),
+    )
 
 
 def _project_document(project: ProjectRecord) -> dict[str, Any]:

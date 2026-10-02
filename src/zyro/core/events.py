@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -19,7 +20,12 @@ _SENSITIVE_NAMES = {
     "api_key",
     "access_token",
     "private_key",
+    "refresh_token",
 }
+_SECRET_TEXT = re.compile(
+    r"(?i)\b(password|api[_-]?key|access[_-]?token|refresh[_-]?token|"
+    r"private[_-]?key|credential)\b\s*[:=]"
+)
 
 
 def _utc_now() -> datetime:
@@ -64,6 +70,8 @@ def validate_payload(payload: Mapping[str, Any]) -> Mapping[str, Any]:
         elif isinstance(value, (list, tuple)):
             for item in value:
                 inspect(item)
+        elif isinstance(value, str) and _SECRET_TEXT.search(value):
+            raise ValueError("payload cannot contain secret-shaped assignments")
         elif isinstance(value, float) and not math.isfinite(value):
             raise ValueError("payload numbers must be finite")
         elif value is not None and not isinstance(value, (str, int, float, bool)):
