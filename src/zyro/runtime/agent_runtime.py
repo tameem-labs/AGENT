@@ -71,6 +71,8 @@ class AgentRuntime:
             model_invoker=self._model_invoker,
             tool_invoker=self._tool_invoker,
             default_model_requirements=registered.definition.model_requirements,
+            requester_id=task.owner,
+            pending_approval_id=task.pending_approval_id,
         )
         logger = get_logger(
             "agent_runtime",
@@ -101,6 +103,26 @@ class AgentRuntime:
             instance.succeed(execution.value)
             task.record_execution_success(execution.value)
             logger.info("agent execution succeeded; verification required")
+        elif execution.waiting_for_approval:
+            assert execution.error is not None
+            approval_id = execution.pending_approval_id
+            if approval_id is None:
+                failure = ErrorInfo(
+                    code="approval_contract_invalid",
+                    message="Approval-pending result omitted its approval identity.",
+                    error_type="ApprovalContractInvalid",
+                )
+                instance.fail(failure)
+                task.fail(failure)
+            else:
+                instance.wait_for_approval(execution.error)
+                task.wait_for_approval(approval_id)
+                logger.info("agent execution is waiting for approval")
+        elif execution.outcome_unknown:
+            assert execution.error is not None
+            instance.mark_unknown(execution.value, execution.error)
+            task.record_execution_unknown(execution.value, execution.error)
+            logger.warning("agent execution outcome is unknown; verification required")
         else:
             assert execution.error is not None
             instance.fail(execution.error)

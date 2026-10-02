@@ -14,7 +14,14 @@ from zyro.models.contracts import (
     ModelResultStatus,
     RequestedToolCall,
 )
-from zyro.tools.contracts import ToolExecutionContext, ToolHandlerResult
+from zyro.tools.contracts import (
+    ToolAuthorizationDecision,
+    ToolAuthorizationStatus,
+    ToolCall,
+    ToolDefinition,
+    ToolExecutionContext,
+    ToolHandlerResult,
+)
 
 
 @dataclass
@@ -51,6 +58,24 @@ class DeterministicModelProvider:
             model_id=model.model_id,
             content=self.content,
             requested_tool_calls=self.tool_calls,
+        )
+
+
+@dataclass
+class AllowTestAuthorizer:
+    calls: list[ToolCall] = field(default_factory=list)
+
+    def authorize(
+        self,
+        call: ToolCall,
+        definition: ToolDefinition,
+    ) -> ToolAuthorizationDecision:
+        self.calls.append(call)
+        return ToolAuthorizationDecision(
+            status=ToolAuthorizationStatus.ALLOW,
+            permission_decision_id="test-permission-decision",
+            permission_id="test-permission",
+            policy_version="test-policy-v1",
         )
 
 

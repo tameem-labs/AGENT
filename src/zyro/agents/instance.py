@@ -17,6 +17,8 @@ def _utc_now() -> datetime:
 class AgentInstanceStatus(StrEnum):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
+    WAITING_FOR_APPROVAL = "WAITING_FOR_APPROVAL"
+    UNKNOWN = "UNKNOWN"
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
@@ -71,6 +73,21 @@ class AgentInstance:
             raise InvalidAgentTransition("only a running agent instance can succeed")
         self.result = result
         self.status = AgentInstanceStatus.SUCCEEDED
+        self.completed_at = _utc_now()
+
+    def wait_for_approval(self, error: ErrorInfo) -> None:
+        if self.status is not AgentInstanceStatus.RUNNING:
+            raise InvalidAgentTransition("only a running agent instance can wait for approval")
+        self.error = error
+        self.status = AgentInstanceStatus.WAITING_FOR_APPROVAL
+        self.completed_at = _utc_now()
+
+    def mark_unknown(self, result: Any, error: ErrorInfo) -> None:
+        if self.status is not AgentInstanceStatus.RUNNING:
+            raise InvalidAgentTransition("only a running agent instance can become unknown")
+        self.result = result
+        self.error = error
+        self.status = AgentInstanceStatus.UNKNOWN
         self.completed_at = _utc_now()
 
     def fail(self, error: ErrorInfo) -> None:

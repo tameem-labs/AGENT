@@ -111,9 +111,17 @@ class ToolCall:
     agent_id: str
     instance_id: str
     correlation_id: str
+    requester_id: str | None = None
+    capability: str | None = None
+    target: str | None = None
+    purpose: str | None = None
+    expected_effect: str | None = None
+    approval_id: str | None = None
+    conditions: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "arguments", _freeze_mapping(self.arguments))
+        object.__setattr__(self, "conditions", _freeze_mapping(self.conditions))
 
     def validation_error(self) -> str | None:
         for field_name in (
@@ -127,6 +135,21 @@ class ToolCall:
             value = getattr(self, field_name)
             if not isinstance(value, str) or not value.strip():
                 return f"{field_name} must be a non-empty string"
+        for field_name in (
+            "requester_id",
+            "capability",
+            "target",
+            "purpose",
+            "expected_effect",
+            "approval_id",
+        ):
+            value = getattr(self, field_name)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                return f"{field_name} must be non-empty when supplied"
+        try:
+            _reject_sensitive_metadata(self.conditions)
+        except InvalidToolDefinitionError:
+            return "tool call conditions cannot contain secret fields"
         return None
 
 
@@ -145,9 +168,15 @@ class ToolHandlerResult:
     succeeded: bool
     output: Mapping[str, Any] | None = None
     error: ErrorInfo | None = None
+    unknown: bool = False
 
     def __post_init__(self) -> None:
-        if self.succeeded:
+        if self.unknown:
+            if self.succeeded or self.error is None:
+                raise ValueError("unknown tool outcome requires an error and cannot be success")
+            if self.output is not None:
+                object.__setattr__(self, "output", _freeze_mapping(self.output))
+        elif self.succeeded:
             if self.error is not None or self.output is None:
                 raise ValueError("successful tool handler result requires only output")
             object.__setattr__(self, "output", _freeze_mapping(self.output))
@@ -162,6 +191,14 @@ class ToolHandlerResult:
     def failure(cls, error: ErrorInfo) -> ToolHandlerResult:
         return cls(succeeded=False, error=error)
 
+    @classmethod
+    def unknown_outcome(
+        cls,
+        error: ErrorInfo,
+        output: Mapping[str, Any] | None = None,
+    ) -> ToolHandlerResult:
+        return cls(succeeded=False, output=output, error=error, unknown=True)
+
 
 class ToolHandler(Protocol):
     def execute(
@@ -173,20 +210,65 @@ class ToolHandler(Protocol):
         ...
 
 
+class ToolAuthorizationStatus(StrEnum):
+    ALLOW = "ALLOW"
+    PERMISSION_DENIED = "PERMISSION_DENIED"
+    APPROVAL_PENDING = "APPROVAL_PENDING"
+    APPROVAL_DENIED = "APPROVAL_DENIED"
+    APPROVAL_EXPIRED = "APPROVAL_EXPIRED"
+    APPROVAL_INVALID = "APPROVAL_INVALID"
+
+
+@dataclass(frozen=True, slots=True)
+class ToolAuthorizationDecision:
+    status: ToolAuthorizationStatus
+    permission_decision_id: str
+    policy_version: str
+    error: ErrorInfo | None = None
+    permission_id: str | None = None
+    approval_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status is ToolAuthorizationStatus.ALLOW and self.error is not None:
+            raise ValueError("allowed tool authorization cannot contain an error")
+        if self.status is not ToolAuthorizationStatus.ALLOW and self.error is None:
+            raise ValueError("blocked tool authorization requires an error")
+
+    @property
+    def allowed(self) -> bool:
+        return self.status is ToolAuthorizationStatus.ALLOW
+
+
+class ToolAuthorizer(Protocol):
+    """Separate authority boundary called by ToolExecutor before side effects."""
+
+    def authorize(
+        self,
+        call: ToolCall,
+        definition: ToolDefinition,
+    ) -> ToolAuthorizationDecision: ...
+
+
 class ToolInvoker(Protocol):
     """Narrow agent-facing boundary implemented by the ToolExecutor."""
 
     def execute(self, call: ToolCall) -> ToolResult:
-        """Resolve and execute one bounded call behind the registry boundary."""
+        """Authorize, resolve, and execute one bounded call behind the registry boundary."""
         ...
 
 
 class ToolResultStatus(StrEnum):
     SUCCESS = "SUCCESS"
+    UNKNOWN = "UNKNOWN"
     NOT_FOUND = "NOT_FOUND"
     DISABLED = "DISABLED"
     INVALID_INPUT = "INVALID_INPUT"
     AUTHORIZATION_REQUIRED = "AUTHORIZATION_REQUIRED"
+    PERMISSION_DENIED = "PERMISSION_DENIED"
+    APPROVAL_PENDING = "APPROVAL_PENDING"
+    APPROVAL_DENIED = "APPROVAL_DENIED"
+    APPROVAL_EXPIRED = "APPROVAL_EXPIRED"
+    APPROVAL_INVALID = "APPROVAL_INVALID"
     EXECUTION_FAILURE = "EXECUTION_FAILURE"
     TIMEOUT = "TIMEOUT"
     HANDLER_EXCEPTION = "HANDLER_EXCEPTION"
@@ -204,15 +286,28 @@ class ToolResult:
     correlation_id: str
     output: Mapping[str, Any] | None = None
     error: ErrorInfo | None = None
+    permission_decision_id: str | None = None
+    permission_id: str | None = None
+    approval_id: str | None = None
+    policy_version: str | None = None
 
     def __post_init__(self) -> None:
         if self.status is ToolResultStatus.SUCCESS:
             if self.error is not None or self.output is None:
                 raise ValueError("successful tool result requires only output")
             object.__setattr__(self, "output", _freeze_mapping(self.output))
+        elif self.status is ToolResultStatus.UNKNOWN:
+            if self.error is None:
+                raise ValueError("unknown tool result requires a structured error")
+            if self.output is not None:
+                object.__setattr__(self, "output", _freeze_mapping(self.output))
         elif self.error is None or self.output is not None:
             raise ValueError("failed tool result requires only an error")
 
     @property
     def succeeded(self) -> bool:
         return self.status is ToolResultStatus.SUCCESS
+
+    @property
+    def outcome_unknown(self) -> bool:
+        return self.status is ToolResultStatus.UNKNOWN

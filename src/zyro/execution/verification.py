@@ -1,35 +1,20 @@
-"""Minimal verification contract kept separate from agent execution."""
+"""Verification protocol and structural verifier kept separate from execution."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import StrEnum
 from typing import Protocol
+from uuid import uuid4
 
 from zyro.agents.instance import AgentInstanceStatus
 from zyro.core.errors import ErrorInfo
 from zyro.core.task import Task
+from zyro.core.verification import (
+    VerificationEvidence,
+    VerificationOutcome,
+    VerificationResult,
+    utc_now,
+)
 from zyro.runtime.agent_runtime import RuntimeExecution
-
-
-class VerificationOutcome(StrEnum):
-    VERIFIED = "VERIFIED"
-    FAILED = "FAILED"
-    UNAVAILABLE = "UNAVAILABLE"
-
-
-@dataclass(frozen=True, slots=True)
-class VerificationResult:
-    outcome: VerificationOutcome
-    summary: str
-    scope: str | None = None
-    error: ErrorInfo | None = None
-
-    def __post_init__(self) -> None:
-        if self.outcome is VerificationOutcome.FAILED and self.error is None:
-            raise ValueError("failed verification requires a structured error")
-        if self.outcome is not VerificationOutcome.FAILED and self.error is not None:
-            raise ValueError("only failed verification can contain an error")
 
 
 class Verifier(Protocol):
@@ -41,8 +26,33 @@ class Verifier(Protocol):
 class StructuralRuntimeVerifier:
     """Verify only runtime-result consistency, never semantic goal correctness."""
 
+    verifier_id = "structural-runtime-verifier"
+
     def verify(self, task: Task, runtime_result: RuntimeExecution) -> VerificationResult:
+        now = utc_now()
+        verification_id = str(uuid4())
         instance = runtime_result.instance
+        execution_id = None if instance is None else instance.instance_id
+        if runtime_result.execution.outcome_unknown:
+            evidence = VerificationEvidence(
+                evidence_id=str(uuid4()),
+                evidence_type="unknown_execution_outcome",
+                summary="Execution started, but available evidence cannot prove completion.",
+                source=self.verifier_id,
+                observed_at=now,
+            )
+            return VerificationResult(
+                outcome=VerificationOutcome.UNKNOWN,
+                summary=evidence.summary,
+                scope="runtime_structure",
+                verification_id=verification_id,
+                task_id=task.task_id,
+                execution_id=execution_id,
+                verifier_id=self.verifier_id,
+                verified_at=now,
+                evidence=(evidence,),
+            )
+
         if (
             not runtime_result.execution.succeeded
             or instance is None
@@ -59,14 +69,49 @@ class StructuralRuntimeVerifier:
                 error_type="VerificationFailure",
                 retryable=True,
             )
+            evidence = VerificationEvidence(
+                evidence_id=str(uuid4()),
+                evidence_type="runtime_inconsistency",
+                summary=error.message,
+                source=self.verifier_id,
+                observed_at=now,
+            )
             return VerificationResult(
                 outcome=VerificationOutcome.FAILED,
                 summary=error.message,
                 scope="runtime_structure",
                 error=error,
+                verification_id=verification_id,
+                task_id=task.task_id,
+                execution_id=execution_id,
+                verifier_id=self.verifier_id,
+                verified_at=now,
+                evidence=(evidence,),
             )
+        evidence = VerificationEvidence(
+            evidence_id=str(uuid4()),
+            evidence_type="runtime_consistency",
+            summary="Task, agent instance, and structured execution result are consistent.",
+            source=self.verifier_id,
+            observed_at=now,
+        )
         return VerificationResult(
             outcome=VerificationOutcome.VERIFIED,
             summary="Agent runtime completed and produced a consistent structured result.",
             scope="runtime_structure",
+            verification_id=verification_id,
+            task_id=task.task_id,
+            execution_id=execution_id,
+            verifier_id=self.verifier_id,
+            verified_at=now,
+            evidence=(evidence,),
         )
+
+
+__all__ = [
+    "StructuralRuntimeVerifier",
+    "VerificationEvidence",
+    "VerificationOutcome",
+    "VerificationResult",
+    "Verifier",
+]

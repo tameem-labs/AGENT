@@ -46,6 +46,8 @@ class UserRequest:
 class ExecutiveOutcome(StrEnum):
     VERIFIED_SUCCESS = "VERIFIED_SUCCESS"
     SUCCEEDED_UNVERIFIED = "SUCCEEDED_UNVERIFIED"
+    UNKNOWN_UNVERIFIED = "UNKNOWN_UNVERIFIED"
+    WAITING_FOR_APPROVAL = "WAITING_FOR_APPROVAL"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
 
@@ -106,7 +108,15 @@ class ZyroExecutive:
 
         while True:
             last_runtime_result = self._runtime.execute(task, request.agent_id)
-            if not last_runtime_result.execution.succeeded:
+            execution = last_runtime_result.execution
+            if task.status is TaskStatus.WAITING_FOR_APPROVAL:
+                logger.info("task is waiting for explicit approval")
+                return self._report(
+                    task,
+                    last_runtime_result,
+                    ExecutiveOutcome.WAITING_FOR_APPROVAL,
+                )
+            if not execution.succeeded and not execution.outcome_unknown:
                 if task.can_retry:
                     task.prepare_retry()
                     logger.info("retrying task after retryable execution failure")
@@ -115,11 +125,15 @@ class ZyroExecutive:
 
             if self._verifier is None:
                 task.mark_verification_unavailable("No verifier was configured for this task.")
-                logger.warning("execution succeeded but remains unverified")
+                logger.warning("execution outcome remains unverified")
                 return self._report(
                     task,
                     last_runtime_result,
-                    ExecutiveOutcome.SUCCEEDED_UNVERIFIED,
+                    (
+                        ExecutiveOutcome.UNKNOWN_UNVERIFIED
+                        if execution.outcome_unknown
+                        else ExecutiveOutcome.SUCCEEDED_UNVERIFIED
+                    ),
                 )
 
             try:
@@ -135,7 +149,15 @@ class ZyroExecutive:
                 return self._report(task, last_runtime_result, ExecutiveOutcome.FAILED)
 
             if verification.outcome is VerificationOutcome.VERIFIED:
-                task.mark_verified(verification.summary, verification.scope or "unspecified")
+                task.mark_verified(
+                    verification.summary,
+                    verification.scope or "unspecified",
+                    verification_id=verification.verification_id,
+                    execution_id=verification.execution_id,
+                    verifier_id=verification.verifier_id,
+                    evidence=verification.evidence,
+                    verified_at=verification.verified_at,
+                )
                 task.complete()
                 logger.info("task verified and completed")
                 return self._report(
@@ -143,12 +165,26 @@ class ZyroExecutive:
                     last_runtime_result,
                     ExecutiveOutcome.VERIFIED_SUCCESS,
                 )
-            if verification.outcome is VerificationOutcome.UNAVAILABLE:
-                task.mark_verification_unavailable(verification.summary)
+            if verification.outcome in {
+                VerificationOutcome.UNAVAILABLE,
+                VerificationOutcome.UNKNOWN,
+            }:
+                task.mark_verification_unavailable(
+                    verification.summary,
+                    verification_id=verification.verification_id,
+                    execution_id=verification.execution_id,
+                    verifier_id=verification.verifier_id,
+                    evidence=verification.evidence,
+                    verified_at=verification.verified_at,
+                )
                 return self._report(
                     task,
                     last_runtime_result,
-                    ExecutiveOutcome.SUCCEEDED_UNVERIFIED,
+                    (
+                        ExecutiveOutcome.UNKNOWN_UNVERIFIED
+                        if execution.outcome_unknown
+                        else ExecutiveOutcome.SUCCEEDED_UNVERIFIED
+                    ),
                 )
 
             assert verification.error is not None
@@ -157,7 +193,15 @@ class ZyroExecutive:
                 task.retry_after_verification_failure(verification.error, scope)
                 logger.info("retrying task after retryable verification failure")
                 continue
-            task.mark_verification_failed(verification.error, scope)
+            task.mark_verification_failed(
+                verification.error,
+                scope,
+                verification_id=verification.verification_id,
+                execution_id=verification.execution_id,
+                verifier_id=verification.verifier_id,
+                evidence=verification.evidence,
+                verified_at=verification.verified_at,
+            )
             return self._report(task, last_runtime_result, ExecutiveOutcome.FAILED)
 
     @staticmethod

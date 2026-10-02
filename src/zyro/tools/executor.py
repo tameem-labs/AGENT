@@ -1,4 +1,4 @@
-"""Bounded tool execution behind registry, validation, and risk gates."""
+"""Bounded tool execution with mandatory external authorization before side effects."""
 
 from __future__ import annotations
 
@@ -7,8 +7,10 @@ from typing import Any
 
 from zyro.core.errors import ErrorInfo
 from zyro.core.logging import LogContext, get_logger
-from zyro.core.risk import RiskClass
 from zyro.tools.contracts import (
+    ToolAuthorizationDecision,
+    ToolAuthorizationStatus,
+    ToolAuthorizer,
     ToolCall,
     ToolExecutionContext,
     ToolHandlerResult,
@@ -20,10 +22,11 @@ from zyro.tools.registry import ToolRegistry
 
 
 class ToolExecutor:
-    """Execute one registered automatic-risk tool; never infer authorization."""
+    """Execute one bounded tool only after a separate authorizer explicitly allows it."""
 
-    def __init__(self, registry: ToolRegistry) -> None:
+    def __init__(self, registry: ToolRegistry, authorizer: ToolAuthorizer) -> None:
         self._registry = registry
+        self._authorizer = authorizer
 
     def execute(self, call: ToolCall) -> ToolResult:
         validation_error = call.validation_error()
@@ -61,19 +64,6 @@ class ToolExecutor:
                     error_type="DisabledTool",
                 ),
             )
-        if definition.risk_class is not RiskClass.AUTOMATIC:
-            return self._failure(
-                call,
-                ToolResultStatus.AUTHORIZATION_REQUIRED,
-                ErrorInfo(
-                    code="tool_authorization_required",
-                    message=(
-                        "Tool execution requires a future permission/approval decision; "
-                        "risk metadata is not authorization."
-                    ),
-                    error_type="AuthorizationRequired",
-                ),
-            )
         schema_error = validate_object_schema(call.arguments, definition.input_schema)
         if schema_error is not None:
             return self._failure(
@@ -84,6 +74,30 @@ class ToolExecutor:
                     message=schema_error,
                     error_type="ToolInputValidation",
                 ),
+            )
+
+        try:
+            authorization = self._authorizer.authorize(call, definition)
+        except Exception as error:
+            return self._failure(
+                call,
+                ToolResultStatus.AUTHORIZATION_REQUIRED,
+                ErrorInfo(
+                    code="authorization_boundary_error",
+                    message=(
+                        "Authorization could not be established; execution was blocked "
+                        f"after {type(error).__name__}."
+                    ),
+                    error_type="AuthorizationBoundaryError",
+                ),
+            )
+        if not authorization.allowed:
+            assert authorization.error is not None
+            return self._failure(
+                call,
+                self._authorization_result_status(authorization.status),
+                authorization.error,
+                authorization,
             )
 
         logger = get_logger(
@@ -104,7 +118,7 @@ class ToolExecutor:
             instance_id=call.instance_id,
             correlation_id=call.correlation_id,
         )
-        logger.info("bounded tool execution started")
+        logger.info("authorized bounded tool execution started")
         try:
             handler_result = registered.handler.execute(context, call.arguments)
         except TimeoutError:
@@ -118,6 +132,7 @@ class ToolExecutor:
                     error_type="TimeoutError",
                     retryable=True,
                 ),
+                authorization,
             )
         except Exception as error:
             logger.error("tool handler raised an exception")
@@ -129,10 +144,33 @@ class ToolExecutor:
                     message=f"The tool handler raised {type(error).__name__}.",
                     error_type=type(error).__name__,
                 ),
+                authorization,
             )
 
         if not isinstance(handler_result, ToolHandlerResult):
-            return self._malformed(call, "Tool handler returned an invalid result contract.")
+            return self._malformed(
+                call,
+                "Tool handler returned an invalid result contract.",
+                authorization,
+            )
+        if handler_result.unknown:
+            assert handler_result.error is not None
+            logger.warning("tool execution outcome is unknown")
+            return ToolResult(
+                status=ToolResultStatus.UNKNOWN,
+                tool_id=call.tool_id,
+                request_id=call.request_id,
+                task_id=call.task_id,
+                agent_id=call.agent_id,
+                instance_id=call.instance_id,
+                correlation_id=call.correlation_id,
+                output=handler_result.output,
+                error=handler_result.error,
+                permission_decision_id=authorization.permission_decision_id,
+                permission_id=authorization.permission_id,
+                approval_id=authorization.approval_id,
+                policy_version=authorization.policy_version,
+            )
         if not handler_result.succeeded:
             assert handler_result.error is not None
             logger.warning("tool execution failed")
@@ -140,12 +178,17 @@ class ToolExecutor:
                 call,
                 ToolResultStatus.EXECUTION_FAILURE,
                 handler_result.error,
+                authorization,
             )
         assert handler_result.output is not None
         output_error = validate_object_schema(handler_result.output, definition.output_schema)
         if output_error is not None:
-            return self._malformed(call, f"Tool output failed its contract: {output_error}")
-        logger.info("bounded tool execution succeeded")
+            return self._malformed(
+                call,
+                f"Tool output failed its contract: {output_error}",
+                authorization,
+            )
+        logger.info("authorized bounded tool execution succeeded")
         return ToolResult(
             status=ToolResultStatus.SUCCESS,
             tool_id=call.tool_id,
@@ -155,9 +198,18 @@ class ToolExecutor:
             instance_id=call.instance_id,
             correlation_id=call.correlation_id,
             output=handler_result.output,
+            permission_decision_id=authorization.permission_decision_id,
+            permission_id=authorization.permission_id,
+            approval_id=authorization.approval_id,
+            policy_version=authorization.policy_version,
         )
 
-    def _malformed(self, call: ToolCall, message: str) -> ToolResult:
+    def _malformed(
+        self,
+        call: ToolCall,
+        message: str,
+        authorization: ToolAuthorizationDecision,
+    ) -> ToolResult:
         return self._failure(
             call,
             ToolResultStatus.MALFORMED_RESULT,
@@ -166,6 +218,7 @@ class ToolExecutor:
                 message=message,
                 error_type="MalformedToolResult",
             ),
+            authorization,
         )
 
     @staticmethod
@@ -173,6 +226,7 @@ class ToolExecutor:
         call: ToolCall,
         status: ToolResultStatus,
         error: ErrorInfo,
+        authorization: ToolAuthorizationDecision | None = None,
     ) -> ToolResult:
         return ToolResult(
             status=status,
@@ -183,7 +237,24 @@ class ToolExecutor:
             instance_id=call.instance_id,
             correlation_id=call.correlation_id,
             error=error,
+            permission_decision_id=(
+                None if authorization is None else authorization.permission_decision_id
+            ),
+            permission_id=None if authorization is None else authorization.permission_id,
+            approval_id=None if authorization is None else authorization.approval_id,
+            policy_version=None if authorization is None else authorization.policy_version,
         )
+
+    @staticmethod
+    def _authorization_result_status(status: ToolAuthorizationStatus) -> ToolResultStatus:
+        return {
+            ToolAuthorizationStatus.PERMISSION_DENIED: ToolResultStatus.PERMISSION_DENIED,
+            ToolAuthorizationStatus.APPROVAL_PENDING: ToolResultStatus.APPROVAL_PENDING,
+            ToolAuthorizationStatus.APPROVAL_DENIED: ToolResultStatus.APPROVAL_DENIED,
+            ToolAuthorizationStatus.APPROVAL_EXPIRED: ToolResultStatus.APPROVAL_EXPIRED,
+            ToolAuthorizationStatus.APPROVAL_INVALID: ToolResultStatus.APPROVAL_INVALID,
+            ToolAuthorizationStatus.ALLOW: ToolResultStatus.AUTHORIZATION_REQUIRED,
+        }[status]
 
 
 def validate_object_schema(

@@ -4,10 +4,12 @@ from typing import Any
 
 import pytest
 
-from tests.fakes import EchoToolHandler
+from tests.fakes import AllowTestAuthorizer, EchoToolHandler
 from zyro.core.errors import ErrorInfo
 from zyro.core.risk import RiskClass
 from zyro.tools.contracts import (
+    ToolAuthorizationDecision,
+    ToolAuthorizationStatus,
     ToolCall,
     ToolDefinition,
     ToolExecutionContext,
@@ -67,7 +69,7 @@ def executor_with(
 ) -> ToolExecutor:
     registry = ToolRegistry()
     registry.register(tool or definition(), handler or EchoToolHandler())  # type: ignore[arg-type]
-    return ToolExecutor(registry)
+    return ToolExecutor(registry, AllowTestAuthorizer())
 
 
 def test_tool_definition_validation() -> None:
@@ -137,7 +139,7 @@ def test_valid_tool_execution_returns_structured_result_and_correlation() -> Non
 
 
 def test_missing_and_disabled_tools_are_explicit_failures() -> None:
-    missing = ToolExecutor(ToolRegistry()).execute(call("missing"))
+    missing = ToolExecutor(ToolRegistry(), AllowTestAuthorizer()).execute(call("missing"))
     disabled = executor_with(tool=definition(enabled=False)).execute(call())
 
     assert missing.status is ToolResultStatus.NOT_FOUND
@@ -231,14 +233,53 @@ def test_malformed_handler_result_and_output_are_rejected() -> None:
     assert invalid_output.status is ToolResultStatus.MALFORMED_RESULT
 
 
-def test_risk_metadata_never_grants_tool_authorization() -> None:
+class RaisingAuthorizer:
+    def authorize(
+        self,
+        call: ToolCall,
+        tool_definition: ToolDefinition,
+    ) -> ToolAuthorizationDecision:
+        raise RuntimeError("policy backend failed")
+
+
+class DenyAuthorizer:
+    def authorize(
+        self,
+        call: ToolCall,
+        tool_definition: ToolDefinition,
+    ) -> ToolAuthorizationDecision:
+        return ToolAuthorizationDecision(
+            status=ToolAuthorizationStatus.PERMISSION_DENIED,
+            permission_decision_id="denied-decision",
+            policy_version="test-policy-v1",
+            error=ErrorInfo("permission_denied", "Denied.", "PermissionDenied"),
+        )
+
+
+def test_unknown_authorization_failure_fails_closed_before_handler() -> None:
     handler = EchoToolHandler()
-    result = executor_with(
-        handler,
-        definition(risk_class=RiskClass.POLICY_CONTROLLED),
-    ).execute(call())
+    registry = ToolRegistry()
+    registry.register(definition(), handler)
+
+    result = ToolExecutor(registry, RaisingAuthorizer()).execute(call())
 
     assert result.status is ToolResultStatus.AUTHORIZATION_REQUIRED
     assert result.error is not None
-    assert result.error.code == "tool_authorization_required"
+    assert result.error.code == "authorization_boundary_error"
+    assert handler.calls == []
+
+
+def test_tool_executor_obeys_separate_authorizer_before_handler() -> None:
+    handler = EchoToolHandler()
+    registry = ToolRegistry()
+    registry.register(
+        definition(risk_class=RiskClass.POLICY_CONTROLLED),
+        handler,
+    )
+
+    result = ToolExecutor(registry, DenyAuthorizer()).execute(call())
+
+    assert result.status is ToolResultStatus.PERMISSION_DENIED
+    assert result.error is not None
+    assert result.error.code == "permission_denied"
     assert handler.calls == []

@@ -11,6 +11,7 @@ from zyro.core.errors import ErrorInfo, InvalidTaskTransition
 from zyro.core.logging import configure_logging
 from zyro.core.task import Task, TaskStatus
 from zyro.runtime.agent_runtime import AgentRuntime
+from zyro.tools.contracts import ToolResult, ToolResultStatus
 
 
 class SuccessfulHandler:
@@ -70,6 +71,7 @@ def test_runtime_executes_agent_and_preserves_all_correlation_ids() -> None:
         instance_id="instance-1",
         goal="do work",
         attempt=1,
+        requester_id="user-1",
     )
 
 
@@ -135,3 +137,58 @@ def test_agent_execution_requires_error_on_failure() -> None:
 
     error = ErrorInfo("failed", "failed", "Failure")
     assert AgentExecution.failure(error).error is error
+
+
+def authorization_result(status: ToolResultStatus) -> ToolResult:
+    return ToolResult(
+        status=status,
+        tool_id="writer",
+        request_id="request-1",
+        task_id="task-1",
+        agent_id="agent-1",
+        instance_id="instance-1",
+        correlation_id="correlation-1",
+        error=ErrorInfo("blocked", "Execution did not complete.", "Blocked"),
+        approval_id="approval-1" if status is ToolResultStatus.APPROVAL_PENDING else None,
+        permission_decision_id="permission-decision-1",
+        policy_version="policy-v1",
+    )
+
+
+class ApprovalWaitingHandler:
+    def execute(self, context: ExecutionContext) -> AgentExecution:
+        result = authorization_result(ToolResultStatus.APPROVAL_PENDING)
+        assert context.requester_id == "user-1"
+        return AgentExecution.failure(result.error, tool_results=(result,))  # type: ignore[arg-type]
+
+
+def test_runtime_represents_approval_waiting_without_success_or_done() -> None:
+    registry = AgentRegistry()
+    registry.register(definition(), ApprovalWaitingHandler())
+    work = task()
+
+    result = AgentRuntime(registry, instance_id_factory=lambda: "instance-1").execute(
+        work, "agent-1"
+    )
+
+    assert not result.execution.succeeded
+    assert result.instance is not None
+    assert result.instance.status is AgentInstanceStatus.WAITING_FOR_APPROVAL
+    assert work.status is TaskStatus.WAITING_FOR_APPROVAL
+    assert work.pending_approval_id == "approval-1"
+    assert work.status.value != TaskStatus.DONE.value
+    with pytest.raises(InvalidTaskTransition):
+        work.record_execution_success({"bypass": True})
+
+
+def test_waiting_task_must_resume_through_retry_and_retains_approval_identity() -> None:
+    work = task()
+    work.start()
+    work.wait_for_approval("approval-1")
+
+    work.resume_after_approval()
+
+    assert work.status is TaskStatus.RETRY
+    assert work.pending_approval_id == "approval-1"
+    work.start()
+    assert work.status.value == TaskStatus.RUNNING.value

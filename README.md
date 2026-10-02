@@ -2,9 +2,9 @@
 
 ZYRO is specified as a personal Executive AI, computer agent, and AI organization. The user will interact with one canonical Executive while internal components coordinate domains, agents, models, tools, workflows, state, knowledge, security, execution, and verification.
 
-This repository has completed **Phase 3 — Model Router + Tool System** in the delivery sequence. It implements the Phase 2 Executive/Task/Agent runtime plus provider-independent model requirements, deterministic model routing, replaceable provider contracts, bounded tool definitions/registration/execution, structured failures, and runtime service boundaries. It does **not** include a real external model adapter, permission/approval engine, memory, workflows, or domain business logic.
+This repository has completed **Phase 4 — Permission + Approval + Verification** in the delivery sequence. It implements the Executive/Task/Agent runtime, provider-independent model routing, bounded tools, scoped standing permission, action-bound human approval state, mandatory pre-handler authorization, approval waiting, honest unknown outcomes, and structured verification evidence. It does **not** include a real external model adapter, approval UI, durable/distributed authorization, advanced semantic verification, memory, workflows, or domain business logic.
 
-> Naming note: the existing architecture roadmap calls Model Router + Tool Registry “Phase 2,” while the delivery sequence calls it “Phase 3.” The next delivery milestone, “Phase 4 — Permission + Approval + Verification,” corresponds to roadmap Phase 3. See `PROGRESS.md` for actual implementation status.
+> Naming note: the existing architecture roadmap calls Permission + Approval + Verification “Phase 3,” while the delivery sequence calls it “Phase 4.” See `PROGRESS.md` for actual implementation status.
 
 ## Requirements
 
@@ -31,14 +31,15 @@ The command initializes safe configuration and logging, then exits. It does not 
 
 Core contracts are located at:
 
-- `src/zyro/core/` — Executive, Task lifecycle, shared errors/risk, configuration, and logging
+- `src/zyro/core/` — Executive, Task lifecycle, shared errors/risk/verification contracts, configuration, and logging
+- `src/zyro/security/` — scoped permission, risk-path policy, action-bound approval, and tool authorization composition
 - `src/zyro/agents/` — definitions, instances, handlers, and registry
 - `src/zyro/models/` — model requirements/definitions/results, provider registry, model registry, and deterministic router
 - `src/zyro/tools/` — bounded definitions/calls/results, registry, schema validation, and executor
 - `src/zyro/runtime/agent_runtime.py` — one bounded agent attempt with optional model/tool service boundaries
 - `src/zyro/execution/verification.py` — independent structural verification protocol
 
-Providers and tools are registered programmatically with non-secret definitions. The repository ships no product provider adapter and requires no API key. Deterministic providers and tools under `tests/` are test infrastructure only. Model-requested tool calls are data, not authorization: the runtime never executes them automatically. Until Phase 4 authority infrastructure exists, non-`AUTOMATIC` tools fail closed with `AUTHORIZATION_REQUIRED`.
+Providers and tools are registered programmatically with non-secret definitions. The repository ships no product provider adapter and requires no API key. Deterministic providers and tools under `tests/` are test infrastructure only. Model-requested tool calls are inert data: every supported tool execution passes through a required, separate authorizer before the handler. Capability, risk classification, standing permission, action approval, execution, verification, and Task completion remain distinct. Missing or stale authority fails closed; approval-required actions return a bound pending approval and do not invoke the handler. Structural verification proves only runtime consistency, never semantic or real-world correctness.
 
 ## Quality checks
 

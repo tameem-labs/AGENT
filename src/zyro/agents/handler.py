@@ -34,6 +34,8 @@ class ExecutionContext:
     model_invoker: ModelInvoker | None = None
     tool_invoker: ToolInvoker | None = None
     default_model_requirements: ModelRequirements | None = None
+    requester_id: str | None = None
+    pending_approval_id: str | None = None
 
     def invoke_model(
         self,
@@ -77,8 +79,19 @@ class ExecutionContext:
             )
         return self.model_invoker.invoke(model_request)
 
-    def execute_tool(self, tool_id: str, arguments: Mapping[str, Any]) -> ToolResult:
-        """Request one bounded tool call; model suggestions are never auto-executed."""
+    def execute_tool(
+        self,
+        tool_id: str,
+        arguments: Mapping[str, Any],
+        *,
+        capability: str | None = None,
+        target: str | None = None,
+        purpose: str | None = None,
+        expected_effect: str | None = None,
+        approval_id: str | None = None,
+        conditions: Mapping[str, Any] | None = None,
+    ) -> ToolResult:
+        """Request one authorized bounded call; model suggestions grant no authority."""
         call = ToolCall(
             tool_id=tool_id,
             arguments=arguments,
@@ -87,6 +100,13 @@ class ExecutionContext:
             agent_id=self.agent_id,
             instance_id=self.instance_id,
             correlation_id=self.correlation_id,
+            requester_id=self.requester_id,
+            capability=capability,
+            target=target,
+            purpose=purpose,
+            expected_effect=expected_effect,
+            approval_id=approval_id or self.pending_approval_id,
+            conditions={} if conditions is None else conditions,
         )
         validation_error = call.validation_error()
         if validation_error is not None:
@@ -157,6 +177,23 @@ class AgentExecution:
             raise ValueError("successful agent execution cannot contain failed model results")
         if self.succeeded and any(not result.succeeded for result in self.tool_results):
             raise ValueError("successful agent execution cannot contain failed tool results")
+
+    @property
+    def outcome_unknown(self) -> bool:
+        return any(result.outcome_unknown for result in self.tool_results)
+
+    @property
+    def waiting_for_approval(self) -> bool:
+        return any(
+            result.status is ToolResultStatus.APPROVAL_PENDING for result in self.tool_results
+        )
+
+    @property
+    def pending_approval_id(self) -> str | None:
+        for result in self.tool_results:
+            if result.status is ToolResultStatus.APPROVAL_PENDING:
+                return result.approval_id
+        return None
 
     @classmethod
     def success(

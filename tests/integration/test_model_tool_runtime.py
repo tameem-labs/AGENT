@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from tests.fakes import DeterministicModelProvider, EchoToolHandler
+from tests.fakes import AllowTestAuthorizer, DeterministicModelProvider, EchoToolHandler
 from zyro.agents.definition import AgentDefinition
 from zyro.agents.handler import AgentExecution, ExecutionContext
 from zyro.agents.registry import AgentRegistry
@@ -86,7 +86,7 @@ def tool_executor(handler: EchoToolHandler | None = None) -> ToolExecutor:
         ),
         handler or EchoToolHandler(),
     )
-    return ToolExecutor(registry)
+    return ToolExecutor(registry, AllowTestAuthorizer())
 
 
 def task(max_attempts: int = 1) -> Task:

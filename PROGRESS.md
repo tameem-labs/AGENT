@@ -10,11 +10,72 @@ This file is a chronological, append-only implementation record. Add new entries
 
 ## Current status
 
-- **Current delivery phase:** Phase 3 — Model Router + Tool System — **VERIFIED**
-- **Architecture-roadmap equivalent:** Phase 2 — Model Router + Tool Registry
-- **Next permitted work:** Phase 4 — Permission + Approval + Verification
+- **Current delivery phase:** Phase 4 — Permission + Approval + Verification — **VERIFIED**
+- **Architecture-roadmap equivalent:** Phase 3 — Permission + Approval + Verification
+- **Next permitted work:** Only the next explicitly requested roadmap phase
 - **Known blockers:** None
-- **Explicitly not implemented:** real external model adapters, permission/approval decisions, advanced semantic verification, memory/state/knowledge behavior, workflows, domain business logic, external tools, and durable infrastructure remain **DOCUMENTED** only.
+- **Explicitly not implemented:** real external model adapters/tools, approval UI or identity authentication, durable/distributed authorization, advanced semantic or real-world verification, memory/state/knowledge behavior, workflows, and domain business logic remain **DOCUMENTED** only.
+
+---
+
+## 2026-10-02 01:57:57 UTC — Phase 4: Permission + Approval + Verification
+
+### Status
+
+**IMPLEMENTED, TESTED, VERIFIED**
+
+### What was implemented
+
+- Added explicit bounded Permission contracts with principal/capability/scope, active/disabled/revoked status, expiry, exact conditions, policy version, non-secret metadata, deterministic in-process storage, revocation, known-principal directory, and structured decisions.
+- Added default-deny Permission evaluation for unknown principals/capabilities, missing grants, scope mismatch, inactive/revoked/expired/stale-policy grants, and unmet conditions. Capability declarations never grant authority.
+- Added a deterministic risk policy preserving only `AUTOMATIC`, `POLICY_CONTROLLED`, and `STRICT_AUTHORIZATION`; it selects whether action approval is required but cannot override denied permission or create authority.
+- Added immutable action fingerprints and in-process Approval requests bound to request/task/requester/executor/capability/target/scope/risk/reason/effect/conditions/argument digest, with pending, escalated, approved, denied, rejected, cancelled, expired, and superseded states.
+- Added explicit decision principals/timestamps/history, self-approval rejection, expiry, cancellation, escalation without authority, and material-change rejection. Approval never becomes standing permission.
+- Added a mandatory narrow `ToolAuthorizer` dependency to `ToolExecutor`. Authorization runs after contract validation and before any handler call; missing, denied, pending, expired, cancelled, mismatched, revoked, or unknown authority keeps the handler inert and returns structured identifiers/failures.
+- Extended tool calls/results with authorization context and audit identities while preserving existing constructor compatibility. Model-requested tool calls remain inert suggestions.
+- Added `WAITING_FOR_APPROVAL` Task/Agent Instance behavior that pauses rather than consumes an execution retry, cannot become success/`DONE`, and carries the exact approval identity into a resumed attempt.
+- Added explicit unknown tool/execution outcomes that remain unknown and enter verification without fabricated success or failure.
+- Added structured verification identity, task/execution/verifier IDs, time, scope, and evidence. Structural verification remains limited to runtime consistency and represents unknown outcomes as unknown/unverified.
+- Updated package metadata to 0.4.0 and documented implemented boundaries without introducing future-phase systems.
+
+### Files created or modified
+
+- Security: `src/zyro/security/{permission,policy,approval,authorization}.py`
+- Tool boundary: `src/zyro/tools/{contracts,executor}.py`
+- Lifecycle and verification: `src/zyro/core/{task,executive,verification}.py`, `src/zyro/agents/{handler,instance}.py`, `src/zyro/runtime/agent_runtime.py`, `src/zyro/execution/verification.py`
+- Tests: deterministic permission/risk/approval unit tests, authorization integration tests, Task/unknown/verification tests, Phase 4 architecture guards, and updated Phase 3 test-only authorizers
+- Documentation/configuration: `README.md`, `PROJECT_MAP.md`, `PROGRESS.md`, `pyproject.toml`, package version export
+
+### Tests and verification
+
+- `.venv/bin/pytest -q` — **TESTED**, 113 tests passed, including all Phase 1–3 regressions and Phase 4 permission/risk/approval/execution/verification/Task/security architecture paths.
+- `.venv/bin/ruff check src tests` — **VERIFIED**, all checks passed.
+- `.venv/bin/ruff format --check .` — **VERIFIED**, all 79 checked Python files formatted.
+- `.venv/bin/mypy` — **VERIFIED**, no issues found in 61 source/test files.
+- `.venv/bin/python -m pip install -e '.[dev]'` — **VERIFIED**, editable 0.4.0 package installation succeeded.
+- Runtime/import/version/security smoke — **VERIFIED**, CLI initialization and public security imports succeeded with package/source version 0.4.0 and no API key or external service.
+- Tracked secret-path/credential-assignment scan and `git diff --check` — **VERIFIED**, no forbidden tracked path, hard-coded credential assignment, or whitespace error was detected.
+
+### Verified failure and boundary behavior
+
+- Unknown principal/capability, absent permission, mismatched tool/action/target scope, inactive/revoked/expired/stale-policy permission, unmet condition, and authorization-boundary exceptions fail closed before handlers.
+- Pending, denied, rejected, cancelled, expired, superseded, escalated-without-approval, missing, or materially mismatched approvals do not execute. Explicit human approval authorizes only the exact action while current standing permission is re-evaluated.
+- Risk policy cannot override permission; automatic execution still requires permission; policy-controlled and strict paths are deterministic and separately tested.
+- Approval waiting remains non-terminal and non-successful; resumption preserves approval identity and cannot bypass re-authorization. Unknown handler outcomes remain unknown/unverified.
+- Verification records structural evidence and identities without claiming semantic goal correctness or real-world side-effect verification. Task lifecycle alone owns `DONE`.
+
+### Known limitations
+
+- Permission, approval, and audit state is deterministic and process-local only; there is no persistence, distributed coordination, production identity/session authentication, or approval UI.
+- Decision-principal identifiers are injected configuration, not proof of a human-authentication ceremony. Product composition must supply authenticated identity in a later appropriate phase.
+- Risk rules are deterministic and static; there is no adaptive policy engine.
+- Action arguments are bound by SHA-256 digest and not persisted in approvals; callers must provide truthful non-secret purpose/effect/target context.
+- Structural verification proves runtime consistency only. It does not semantically validate goals or independently observe real-world side effects.
+- Synchronous timeout enforcement remains cooperative, and no real external tool is included.
+
+### Next permitted phase
+
+Stop after Phase 4. Begin only the next explicitly requested roadmap phase; do not add memory, workflows, domains, browser/computer control, voice/camera, or other later capabilities implicitly.
 
 ---
 

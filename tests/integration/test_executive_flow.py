@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import pytest
 
@@ -10,6 +11,7 @@ from zyro.core.executive import ExecutiveOutcome, UserRequest, ZyroExecutive
 from zyro.core.task import Task, TaskStatus, VerificationStatus
 from zyro.execution.verification import (
     StructuralRuntimeVerifier,
+    VerificationEvidence,
     VerificationOutcome,
     VerificationResult,
     Verifier,
@@ -73,6 +75,11 @@ class FailOnceVerifier:
 
     def verify(self, task: Task, runtime_result: RuntimeExecution) -> VerificationResult:
         self.calls += 1
+        now = datetime(2026, 10, 2, tzinfo=UTC)
+        assert runtime_result.instance is not None
+        verification_id = f"verification-{self.calls}"
+        execution_id = runtime_result.instance.instance_id
+        verifier_id = "fail-once-test-verifier"
         if self.calls == 1:
             error = ErrorInfo(
                 "evidence_failed",
@@ -85,11 +92,39 @@ class FailOnceVerifier:
                 error.message,
                 "test_verification",
                 error,
+                verification_id=verification_id,
+                task_id=task.task_id,
+                execution_id=execution_id,
+                verifier_id=verifier_id,
+                verified_at=now,
+                evidence=(
+                    VerificationEvidence(
+                        "evidence-1",
+                        "test_failure",
+                        error.message,
+                        verifier_id,
+                        now,
+                    ),
+                ),
             )
         return VerificationResult(
             VerificationOutcome.VERIFIED,
             "Evidence passed.",
             "test_verification",
+            verification_id=verification_id,
+            task_id=task.task_id,
+            execution_id=execution_id,
+            verifier_id=verifier_id,
+            verified_at=now,
+            evidence=(
+                VerificationEvidence(
+                    "evidence-2",
+                    "test_success",
+                    "Evidence passed.",
+                    verifier_id,
+                    now,
+                ),
+            ),
         )
 
 

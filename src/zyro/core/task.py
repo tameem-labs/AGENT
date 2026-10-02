@@ -8,6 +8,7 @@ from enum import StrEnum
 from typing import Any
 
 from zyro.core.errors import ErrorInfo, InvalidTaskError, InvalidTaskTransition
+from zyro.core.verification import VerificationEvidence
 
 
 def _utc_now() -> datetime:
@@ -19,6 +20,7 @@ class TaskStatus(StrEnum):
 
     PENDING = "PENDING"
     RUNNING = "RUNNING"
+    WAITING_FOR_APPROVAL = "WAITING_FOR_APPROVAL"
     VERIFYING = "VERIFYING"
     VERIFIED = "VERIFIED"
     DONE = "DONE"
@@ -47,11 +49,25 @@ class VerificationRecord:
     summary: str = "Verification has not run."
     scope: str | None = None
     verified_at: datetime | None = None
+    verification_id: str | None = None
+    execution_id: str | None = None
+    verifier_id: str | None = None
+    evidence: tuple[VerificationEvidence, ...] = ()
 
 
 _ALLOWED_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.PENDING: frozenset({TaskStatus.RUNNING, TaskStatus.CANCELLED}),
-    TaskStatus.RUNNING: frozenset({TaskStatus.VERIFYING, TaskStatus.FAILED, TaskStatus.CANCELLED}),
+    TaskStatus.RUNNING: frozenset(
+        {
+            TaskStatus.WAITING_FOR_APPROVAL,
+            TaskStatus.VERIFYING,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+        }
+    ),
+    TaskStatus.WAITING_FOR_APPROVAL: frozenset(
+        {TaskStatus.RETRY, TaskStatus.FAILED, TaskStatus.CANCELLED}
+    ),
     TaskStatus.VERIFYING: frozenset(
         {TaskStatus.VERIFIED, TaskStatus.FAILED, TaskStatus.RETRY, TaskStatus.CANCELLED}
     ),
@@ -79,6 +95,7 @@ class Task:
     resource_budget: dict[str, int] = field(default_factory=dict)
     verification_plan: str | None = None
     status: TaskStatus = field(default=TaskStatus.PENDING, init=False)
+    pending_approval_id: str | None = field(default=None, init=False)
     attempt_count: int = field(default=0, init=False)
     result: Any | None = field(default=None, init=False)
     error: ErrorInfo | None = field(default=None, init=False)
@@ -138,7 +155,27 @@ class Task:
     def record_execution_success(self, result: Any) -> None:
         self.result = result
         self.error = None
+        self.pending_approval_id = None
         self._transition(TaskStatus.VERIFYING)
+
+    def record_execution_unknown(self, result: Any, error: ErrorInfo) -> None:
+        self.result = result
+        self.error = error
+        self.pending_approval_id = None
+        self._transition(TaskStatus.VERIFYING)
+
+    def wait_for_approval(self, approval_id: str) -> None:
+        if not approval_id.strip():
+            raise InvalidTaskError("approval_id must be a non-empty string")
+        self.pending_approval_id = approval_id.strip()
+        self._transition(TaskStatus.WAITING_FOR_APPROVAL)
+
+    def resume_after_approval(self) -> None:
+        if self.status is not TaskStatus.WAITING_FOR_APPROVAL:
+            raise InvalidTaskTransition("only a task waiting for approval can resume")
+        # Approval waiting pauses the current attempt; it is not a retryable execution failure.
+        self.attempt_count -= 1
+        self._transition(TaskStatus.RETRY)
 
     def fail(self, error: ErrorInfo) -> None:
         self.error = error
@@ -155,21 +192,49 @@ class Task:
         self.result = None
         self.verification = VerificationRecord()
 
-    def mark_verified(self, summary: str, scope: str) -> None:
+    def mark_verified(
+        self,
+        summary: str,
+        scope: str,
+        *,
+        verification_id: str | None = None,
+        execution_id: str | None = None,
+        verifier_id: str | None = None,
+        evidence: tuple[VerificationEvidence, ...] = (),
+        verified_at: datetime | None = None,
+    ) -> None:
         self.verification = VerificationRecord(
             status=VerificationStatus.VERIFIED,
             summary=summary,
             scope=scope,
-            verified_at=_utc_now(),
+            verified_at=verified_at or _utc_now(),
+            verification_id=verification_id,
+            execution_id=execution_id,
+            verifier_id=verifier_id,
+            evidence=evidence,
         )
         self._transition(TaskStatus.VERIFIED)
 
-    def mark_verification_failed(self, error: ErrorInfo, scope: str) -> None:
+    def mark_verification_failed(
+        self,
+        error: ErrorInfo,
+        scope: str,
+        *,
+        verification_id: str | None = None,
+        execution_id: str | None = None,
+        verifier_id: str | None = None,
+        evidence: tuple[VerificationEvidence, ...] = (),
+        verified_at: datetime | None = None,
+    ) -> None:
         self.verification = VerificationRecord(
             status=VerificationStatus.FAILED,
             summary=error.message,
             scope=scope,
-            verified_at=_utc_now(),
+            verified_at=verified_at or _utc_now(),
+            verification_id=verification_id,
+            execution_id=execution_id,
+            verifier_id=verifier_id,
+            evidence=evidence,
         )
         self.fail(error)
 
@@ -188,12 +253,26 @@ class Task:
         self._transition(TaskStatus.RETRY)
         self.result = None
 
-    def mark_verification_unavailable(self, summary: str) -> None:
+    def mark_verification_unavailable(
+        self,
+        summary: str,
+        *,
+        verification_id: str | None = None,
+        execution_id: str | None = None,
+        verifier_id: str | None = None,
+        evidence: tuple[VerificationEvidence, ...] = (),
+        verified_at: datetime | None = None,
+    ) -> None:
         if self.status is not TaskStatus.VERIFYING:
             raise InvalidTaskTransition("verification can only be unavailable while verifying")
         self.verification = VerificationRecord(
             status=VerificationStatus.UNAVAILABLE,
             summary=summary,
+            verified_at=verified_at,
+            verification_id=verification_id,
+            execution_id=execution_id,
+            verifier_id=verifier_id,
+            evidence=evidence,
         )
         self._touch()
 

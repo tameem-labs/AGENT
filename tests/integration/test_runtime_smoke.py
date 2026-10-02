@@ -23,7 +23,7 @@ def test_package_import_and_runtime_initialization_need_no_credentials(
 
     runtime = initialize_runtime()
 
-    assert zyro.__version__ == "0.3.0"
+    assert zyro.__version__ == "0.4.0"
     assert runtime.config.environment == "development"
 
 

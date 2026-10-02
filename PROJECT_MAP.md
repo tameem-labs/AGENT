@@ -2,20 +2,21 @@
 
 ## Purpose
 
-ZYRO is designed as one canonical personal Executive backed by replaceable models, bounded tools, explicit orchestration, distinct memory/state/knowledge layers, policy-controlled execution, and independent verification. Current code implements the Executive/Task/Agent runtime plus provider-independent model routing and bounded tool infrastructure; later documented capabilities remain specifications rather than implementations.
+ZYRO is designed as one canonical personal Executive backed by replaceable models, bounded tools, explicit orchestration, distinct memory/state/knowledge layers, policy-controlled execution, and independent verification. Current code implements the Executive/Task/Agent runtime, provider-independent model routing, bounded tools, scoped permission, action-bound approval state, mandatory authorization before handler invocation, and structured independent verification evidence; later documented capabilities remain specifications rather than implementations.
 
 ## Repository structure
 
 | Path | Responsibility |
 | --- | --- |
 | `src/zyro/` | Installable Python package and implementation source |
-| `src/zyro/core/` | Canonical Executive, Task lifecycle, errors, configuration, and logging |
+| `src/zyro/core/` | Canonical Executive, Task lifecycle, errors/risk/verification contracts, configuration, and logging |
 | `src/zyro/agents/` | Agent Definition, Agent Instance, bounded handler contract, and in-process registry |
 | `src/zyro/runtime/` | Process bootstrap plus Agent Runtime with narrow model/tool invocation boundaries |
 | `src/zyro/models/` | Provider-independent definitions, requirements, results, registries, provider contract, and deterministic router |
 | `src/zyro/tools/` | Bounded definitions, calls/results, handlers, in-process registry, validation, and executor |
-| `src/zyro/execution/` | Independent verification contract and basic structural runtime verifier |
-| `src/zyro/{memory,knowledge,state,security,interfaces}/` | Explicit future subsystem boundaries; not yet implemented |
+| `src/zyro/execution/` | Independent verification protocol and basic structural runtime verifier |
+| `src/zyro/security/` | Scoped permission, risk-path policy, action-bound approval, and tool authorization composition |
+| `src/zyro/{memory,knowledge,state,interfaces}/` | Explicit future subsystem boundaries; not yet implemented |
 | `tests/unit/` | Isolated component behavior and failure cases |
 | `tests/integration/` | Behavior across package boundaries and runtime smoke checks |
 | `tests/architecture/` | Lightweight checks for required boundaries and source documents |
@@ -31,7 +32,7 @@ ZYRO is designed as one canonical personal Executive backed by replaceable model
 
 ## Architecture layers
 
-The intended flow is Interface → Executive/Identity/Brain → Orchestration and Runtime → Resource and State services → Tools/Execution → Permission/Approval/Security → Real World → Observability/Recovery. Implemented flow is Executive → Task → Agent Definition/Instance → Agent Runtime → optional Model Router/Provider and bounded Tool Executor → independent basic verification. Model suggestions never authorize tool execution, and policy-controlled tools fail closed until the next phase. Empty package boundaries are not claims that later layers are implemented. Mandatory distinctions and safety constraints are in `docs/00_MASTER/ARCHITECTURE_INVARIANTS.md`.
+The intended flow is Interface → Executive/Identity/Brain → Orchestration and Runtime → Resource and State services → Tools/Execution → Permission/Approval/Security → Real World → Observability/Recovery. Implemented flow is Executive → Task → Agent Definition/Instance → Agent Runtime → optional Model Router/Provider and bounded Tool Executor → required Tool Authorizer → scoped Permission evaluation → risk-selected action Approval when required → handler execution → independent basic verification → guarded Task completion. Model suggestions never authorize execution, approval waiting never becomes success, and unknown execution outcomes remain unknown/unverified. Empty package boundaries are not claims that later layers are implemented. Mandatory distinctions and safety constraints are in `docs/00_MASTER/ARCHITECTURE_INVARIANTS.md`.
 
 ## Authority and source-of-truth rules
 
@@ -50,5 +51,5 @@ The delivery sequence labels the scaffold **Phase 1 — Foundation** and Executi
 - **Delivery Phase 1 / Roadmap Phase 0:** package, configuration, logging, tests, tooling, and architecture boundaries — implemented in this milestone.
 - **Delivery Phase 2 / Roadmap Phase 1:** Executive core, Task, Agent contracts/runtime, finite retry, and basic structural verification — implemented and verified.
 - **Delivery Phase 3 / Roadmap Phase 2:** Model Router + Tool System — implemented and verified.
-- **Delivery Phase 4 / Roadmap Phase 3:** Permission + Approval + Verification — next permitted work; not implemented.
+- **Delivery Phase 4 / Roadmap Phase 3:** Permission + Approval + Verification — implemented and verified.
 - **Later roadmap phases:** domains, communication, state systems, hardening, and end-to-end workflows — documented only until their phase begins.
